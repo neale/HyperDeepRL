@@ -20,7 +20,7 @@ import bsuite
 from bsuite.utils import gym_wrapper
 from bsuite import bsuite
 from ..utils import *
-
+from .bsuite_wrappers import *
 try:
     import roboschool
 except ImportError:
@@ -244,18 +244,34 @@ class Task:
 
     # adapted from https://github.com/ikostrikov/pytorch-a2c-ppo-acktr/blob/master/envs.py
     def make_env(self, env_id, seed, rank, episode_life=True, special_args=None):
+        is_atari = False
+        is_bsuite = False
+        is_dmcontrol = False
+
         def _thunk():
             random_seed(seed)
             if env_id.startswith('bsuite'):
+                is_bsuite = True
                 id = env_id.split('bsuite-')[1]
                 self.video_enabled = False
+                
                 bsuite_env = bsuite.load_and_record_to_csv(
                         bsuite_id=id,
-                        results_dir='bsuite_logs/',
+                        results_dir='bsuite_logs/{}'.format(np.random.randint(int(1e6))),
+                        overwrite=True
                 )
+               
+                # bsuite_env = bsuite.load_from_id(id)
                 env = gym_wrapper.GymFromDMEnv(bsuite_env)
-            
+                if 'cartpole_swingup' in id:
+                    wrapper = CartpoleSwingupReturnWrapper
+                elif 'deep_sea_stochastic' in id:
+                    wrapper = DeepSeaStochasticReturnWrapper
+                elif 'deep_sea' in id:
+                    wrapper = DeepSeaReturnWrapper
+                env = wrapper(env)
             elif env_id.startswith("dm"):
+                is_dmcontrol = True
                 import dm_control2gym
                 _, domain, task = env_id.split('-')
                 env = dm_control2gym.make(domain_name=domain, task_name=task)
@@ -276,7 +292,8 @@ class Task:
             if is_atari:
                 env = make_atari(env_id)
             env.seed(seed + rank)
-            env = OriginalReturnWrapper(env)
+            if (is_bsuite == False):
+                env = OriginalReturnWrapper(env)
             if is_atari:
                 env = wrap_deepmind(env,
                                     episode_life=episode_life,

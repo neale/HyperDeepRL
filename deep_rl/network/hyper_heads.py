@@ -78,6 +78,8 @@ class DuelingHyperNet(nn.Module, BaseNet):
     def body(self, x=None):
         if not isinstance(x, torch.cuda.FloatTensor):
             x = tensor(x)
+        if x.dim() > 2:
+            x = x.view(x.size(0), -1)
         return self.features(x, self.model_seed['features_z'])
 
     def head(self, phi):

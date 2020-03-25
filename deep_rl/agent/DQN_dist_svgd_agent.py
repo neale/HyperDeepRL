@@ -46,7 +46,7 @@ class DQNDistSVGDActor(BaseActor):
                 action = np.random.randint(0, len(q_max))
                 actions_log = np.random.randint(0, len(q_max), size=(config.particles, 1))
         else:
-            # action = np.argmax(q_max)  # Max Action
+            #action = np.argmax(q_max)  # Max Action
             action = np.argmax(q_mean)  # Mean Action
             actions_log = to_np(particle_max)
         
