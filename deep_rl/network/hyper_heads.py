@@ -56,8 +56,8 @@ class DuelingHyperNet(nn.Module, BaseNet):
     
     def sample_model_seed(self):
         sample_z = self.noise_sampler.sample().to(Config.DEVICE)
-        #sample_z = sample_z.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
-        sample_z = sample_z.unsqueeze(0).unsqueeze(0).repeat(self.features.config['n_gen'], self.particles, 1)
+        sample_z = sample_z.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
+        # sample_z = sample_z.unsqueeze(0).unsqueeze(0).repeat(self.features.config['n_gen'], self.particles, 1)
         self.model_seed = {
             'features_z': sample_z,
             'value_z': sample_z[0],

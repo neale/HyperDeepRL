@@ -1,0 +1,42 @@
+cuda:0
+=========================================================
+Running Manually Defined Single Trial, [1/1]
+Running Config: 
+game : bsuite-deep_sea/0
+tb_tag : 10particles_test/deepsea_bsuite
+alpha_i : 100
+alpha_f : 0.01
+anneal : 20000.0
+lr : 0.001
+freq : 10
+grad_clip : None
+hidden : 128
+replay_size : 1000
+replay_bs : 128
+dist : categorical
+[1m[33mLogging results to CSV file for each bsuite_id in bsuite_logs/.[0m
+[1m[33mLogging results to CSV file for each bsuite_id in bsuite_logs/.[0m
+(128, 128)
+(128, 128)
+DuelingHyperNet(
+  (fc_value): LinearGenerator(
+    (linear1): Linear(in_features=10, out_features=128, bias=False)
+    (linear2): Linear(in_features=128, out_features=128, bias=False)
+  )
+  (fc_advantage): LinearGenerator(
+    (linear1): Linear(in_features=10, out_features=128, bias=False)
+    (linear2): Linear(in_features=128, out_features=256, bias=False)
+  )
+  (features): CartFCHyperBody(
+    (layers): ModuleList(
+      (0): LinearGenerator(
+        (linear1): Linear(in_features=10, out_features=64, bias=False)
+        (linear2): Linear(in_features=64, out_features=12800, bias=False)
+      )
+      (1): LinearGenerator(
+        (linear1): Linear(in_features=10, out_features=64, bias=False)
+        (linear2): Linear(in_features=64, out_features=16384, bias=False)
+      )
+    )
+  )
+)

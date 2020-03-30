@@ -60,12 +60,12 @@ fc_body = namedtuple('fc_body', ' '.join(fields))
 fc_body.__new__.__defaults__ = defaults # python 3.6
 def FCBody_config(d_state, d_hidden, gate, mixer=False):
     net_config = {}
-    net_config['fc1'] = fc_body(d_input=d_state, d_output=d_hidden[0], z_dim=32)
+    net_config['fc1'] = fc_body(d_input=d_state, d_output=d_hidden[0], z_dim=10)
     for i in range(1, len(d_hidden)):
-        net_config['fc{}'.format(i+1)] = fc_body(d_input=d_hidden[i-1], d_output=d_hidden[i], z_dim=32)
+        net_config['fc{}'.format(i+1)] = fc_body(d_input=d_hidden[i-1], d_output=d_hidden[i], z_dim=10)
     if mixer:
         net_config['mixer'] = fc_body(d_hidden=32, d_output=None, n_gen=len(d_hidden))
-    net_config['z_dim'] = 32
+    net_config['z_dim'] = 10
     net_config['s_dim'] = 32
     net_config['n_gen'] = len(d_hidden)
 
