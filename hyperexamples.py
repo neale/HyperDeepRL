@@ -16,16 +16,16 @@ def product_dict(kwargs):
 
 def sweep(game, tag, model_fn, trials=50, manual=True):
     hyperparams = {
-        'alpha_i': [100],
+        'alpha_i': [100, 10],
         'alpha_f': [.1, 0.01],
         'anneal': [20e3],
-        'lr': [1e-3, 2e-3],
-        'freq' : [10, 25],
+        'lr': [1e-3, 2e-3, 1e-4],
+        'freq' : [10],
         'grad_clip': [None, 5],
         'hidden': [256, 128],
         'replay_size': [int(1e3), int(1e5)],
         'replay_bs': [32, 128],
-        'dist': ['softmax']#, 'multinomial', 'normal', 'uniform']
+        'dist': ['softmax', 'normal']#, 'multinomial', 'normal', 'uniform']
         # 'dist': ['multinomial']
     }
     # manually define
@@ -35,16 +35,16 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
         setting = {
             'game': game,
             'tb_tag': tag,
-            'alpha_i': 100,
-            'alpha_f': 0.01,
+            'alpha_i': 10,
+            'alpha_f': .01,
             'anneal': 20e3,
-            'lr': .001,#1e-4,
+            'lr': 1e-4,
             'freq': 10,#100,
             'grad_clip': None,
             'hidden': 128,
-            'replay_size': int(1e3),#int(1e5),
-            'replay_bs': 32,#128,
-            'dist': 'categorical'
+            'replay_size': int(1e5),#int(1e5),
+            'replay_bs': 32,
+            'dist': 'softmax'
         }
         print ('Running Config: ')
         for (k, v) in setting.items():
@@ -65,7 +65,9 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
         print ('Running Config: ')
         for (k, v) in setting.items():
             print ('{} : {}'.format(k, v))
-        dqn_feature(**setting)
+        for i in range(1, 4):
+            setting['tb_tag'] = setting['tb_tag'] + '_{}'.format(i)
+            dqn_feature(**setting)
         if idx == trials:
             print ('Finished Random Sample\nExiting...')
             break
@@ -94,7 +96,7 @@ def dqn_feature(**kwargs):
     config.target_network_update_freq = config.freq  # hard update to target network
     config.exploration_steps = 0  # random actions taken at the beginning to fill the replay buffer
     config.double_q = True  # use double q update
-    config.sgd_update_frequency = 4  # how often to do learning
+    config.sgd_update_frequency = 1  # how often to do learning
     config.gradient_clip = config.grad_clip  # max gradient norm
     config.eval_interval = int(5e3) 
     config.max_steps = 20e3# 500e3
@@ -112,8 +114,8 @@ if __name__ == '__main__':
     random_seed()
     # select_device(-1)
     select_device(0)
-
-    tag = '10particles_sampler/deepsea_bsuite3'
+    
+    tag = 'thompson-deepsea-trials/samples2'
     #tag = '??'
     #game = 'bsuite-DEEP_SEA/'
     game = 'bsuite-deep_sea/0'
