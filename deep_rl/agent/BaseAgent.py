@@ -72,31 +72,28 @@ class BaseAgent:
     def record_online_return(self, info, offset=0):
 
         if isinstance(info, dict):
-            upright = info['episodic_upright']
-            total_upright = info['total_upright']
             total_ret = info['total_return']
             ret = info['episodic_return']
             ep = info['episode']
             steps = info['ep_steps']
             q_mean = info['q_mean']
             q_var = info['q_var']
+            optim_ep = info['optim_ep']
             if ret is not None:
+                self.logger.add_scalar('optim_episodes', optim_ep, self.total_steps + offset)
                 self.logger.add_scalar('episodic_return_train', ret, self.total_steps + offset)
                 self.logger.add_scalar('episodic_steps', steps, self.total_steps + offset)
                 self.logger.add_scalar('total_return', total_ret, self.total_steps + offset)
-                self.logger.add_scalar('episodic_upright', upright, self.total_steps + offset)
-                self.logger.add_scalar('total_upright', total_upright, self.total_steps + offset)
                 self.logger.add_scalar('episode', ep, self.total_steps + offset)
                 self.logger.add_scalar('Q_values_mean_actor', q_mean, self.total_steps + offset)
                 self.logger.add_scalar('Q_values_var_actor', q_var, self.total_steps + offset)
                 self.logger.add_scalar('episode', ep, self.total_steps + offset)
-                self.logger.info('ep: %d| steps: %s| total_steps: %d| return_train: %.3f| ep_upright: %s| total_upright: %s| total_return: %.3f' % (
+                self.logger.info('ep: %d| steps: %s| total_steps: %d| optim_ep: %d| return_train: %.3f| total_return: %.3f' % (
                     ep,
                     steps,
                     self.total_steps + offset,
+                    optim_ep,
                     ret, 
-                    upright,
-                    total_upright,
                     total_ret,
                 ))
 

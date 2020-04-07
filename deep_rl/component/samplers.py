@@ -62,3 +62,17 @@ class NoiseSampler(object):
             sample = self.base_dist.sample([self.particles])
         return sample
 
+    def sweep_samples(self):
+        net_samples = []
+        samples = torch.eye(torch.tensor(self.particles))
+        if self.dist_type == 'softmax':
+            for sample in samples:
+                if self.aux_dist is not None:
+                    sample_aux = self.aux_dist.sample([self.particles])
+                    sample = sample.unsqueeze(0).repeat(self.particles, 1)
+                    sample += sample_aux
+                    sample = sample.clamp(min=0.0, max=1.0)
+                else:
+                    sample = self.base_dist.sample([self.particles])
+                net_samples.append(sample)
+        return net_samples

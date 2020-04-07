@@ -67,7 +67,21 @@ class DuelingHyperNet(nn.Module, BaseNet):
             return model_seed
         else:
             self.model_seed = model_seed
-    
+
+    def sweep_samples(self):
+        samples = []
+        s = self.noise_sampler.sweep_samples()
+        for batch in s:
+            batch = batch.to(Config.DEVICE)
+            batch = batch.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
+            model_seed = {
+                'features_z': batch,
+                'value_z': batch[0],
+                'advantage_z': batch[0],
+            }
+            samples.append(model_seed)
+        return samples
+
     def set_model_seed(self, seed):
         self.model_seed = seed
 
