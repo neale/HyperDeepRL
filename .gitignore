@@ -16,3 +16,6 @@ log/
 *.swk
 *.out
 *.err
+
+vis/
+state_vis_lrm/
