@@ -21,7 +21,7 @@ matplotlib.use('pdf')
 import matplotlib.pyplot as plt
 
 
-class DQNDistSVGDActor(BaseActor):
+class DQNSweepSVGDActor(BaseActor):
     def __init__(self, config):
         BaseActor.__init__(self, config)
         self.config = config
@@ -45,15 +45,12 @@ class DQNDistSVGDActor(BaseActor):
         states = self.get_states(state)
         samples = self._network.sweep_samples()
         plt.figure(figsize=(12, 15), dpi=200)
-        plt.suptitle('Implicit Value Networks - Episode {}'.format(self.ep))
-        plt.xlabel('State')
-        plt.ylabel('Q(s, a)')
-        plt.grid(True)
+        plt.suptitle('Implicit Value Networks')
         left_v, right_v, v = [], [], []
-        print (len(samples))
         for i, sample in enumerate(samples):
             value_f = []
             q_vals = self._network(states.cuda(), seed=sample)
+            # print (q_vals.shape)
             value = q_vals.mean(0)
             left_value = value[:, 0]
             right_value = value[:, 1]
@@ -61,32 +58,34 @@ class DQNDistSVGDActor(BaseActor):
             left_v.append(left_value.detach().cpu())
             right_v.append(right_value.detach().cpu())
             v.append(value.detach().cpu())
-            
+
             plt.subplot(311)
-            plt.plot(range(len(states)), left_value.detach().cpu(), linewidth=.5)
+            plt.plot(range(len(states)), left_value.detach().cpu())
             plt.subplot(312)
-            plt.plot(range(len(states)), right_value.detach().cpu(), linewidth=.5)
+            plt.plot(range(len(states)), right_value.detach().cpu())
             plt.subplot(313)
-            plt.plot(range(len(states)), (right_value-left_value).detach().cpu(), linewidth=.5)
+            plt.plot(range(len(states)), value.detach().cpu())
 
         plt.subplot(311)
         plt.title('Left Action Value')
-        lvals = np.asarray([t.numpy() for t in left_v]).mean(0)
-        plt.plot(range(len(states)), lvals, color='black', linestyle='--', linewidth=2)
+        vals = np.asarray([t.numpy() for t in left_v]).mean(0)
+        plt.plot(range(len(states)), vals, color='black', linestyle='--', linewidth=2)
         plt.subplot(312)
         plt.title('Right Action Value')
-        rvals = np.asarray([t.numpy() for t in right_v]).mean(0)
-        plt.plot(range(len(states)), rvals, color='black', linestyle='--', linewidth=2)
+        vals = np.asarray([t.numpy() for t in right_v]).mean(0)
+        plt.plot(range(len(states)), vals, color='black', linestyle='--', linewidth=2)
         plt.subplot(313)
-        plt.title('Right Left Difference')
-        plt.plot(range(len(states)), rvals-lvals, color='black', linestyle='--', linewidth=2)
-
-        path = 'Vis_Normal/svgd_tinyer/chain_len_{}/'.format(len(states))
+        plt.title('Mean Action Value')
+        vals = np.asarray([t.numpy() for t in v]).mean(0)
+        plt.plot(range(len(states)), vals, color='black', linestyle='--', linewidth=2)
+        plt.xlabel('State')
+        plt.ylabel('Q(s, a)')
+        plt.grid(True)
+        
+        path = 'svgd_all1/chain_len_{}/'.format(len(states))
         os.makedirs(path, exist_ok=True)
         plt.savefig(path+'episode_{}.png'.format(self.ep))
         plt.close('all')
-        
-        # sys.exit(0)
 
 
     def _transition(self):
@@ -119,7 +118,7 @@ class DQNDistSVGDActor(BaseActor):
         else:
             # action = np.argmax(q_max)  # Max Action
             action = np.argmax(q_mean)  # Mean Action
-            # action = np.argmax(q_random)  # Random Head Action
+            #action = np.argmax(q_random)  # Random Head Action
             # action = torch.multinomial(q_prob.cpu(), 1, replacement=True).numpy()[0] # Sampled Action
             actions_log = to_np(particle_max)
         
@@ -141,9 +140,9 @@ class DQNDistSVGDActor(BaseActor):
         info[0]['q_mean'] = q_mean.mean()
         info[0]['q_var'] = q_var.mean()
 
-        if info[0]['terminate'] == True:
-            self.sigterm = True
-            self.close()
+        #if info[0]['terminate'] == True:
+        #    self.sigterm = True
+        #    self.close()
         entry = [self._state[0], action, actions_log, reward[0], next_state[0], int(done[0]), info]
         self._total_steps += 1
         self._state = next_state
@@ -151,7 +150,7 @@ class DQNDistSVGDActor(BaseActor):
         return entry
 
 
-class DQN_Dist_SVGD_Agent(BaseAgent):
+class DQN_Sweep_SVGD_Agent(BaseAgent):
     def __init__(self, config):
         BaseAgent.__init__(self, config)
         self.config = config
@@ -159,7 +158,7 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
         config.lock = mp.Lock()
 
         self.replay = config.replay_fn()
-        self.actor = DQNDistSVGDActor(config)
+        self.actor = DQNSweepSVGDActor(config)
 
         self.network = config.network_fn()
         self.network.share_memory()
@@ -228,70 +227,94 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
                 terminals = tensor(terminals)
                 rewards = tensor(rewards)
                 
-                sample_z = self.network.sample_model_seed(return_seed=True) 
-                # all_samples = self.network.sweep_samples()
+                sample = self.network.sample_model_seed(return_seed=True) 
+                all_samples = self.network.sweep_samples()
                 
-                ## Get target q values
-                q_next = self.target_network(next_states, seed=sample_z).detach()  # [particles, batch, action]
-                if self.config.double_q:
-                    ## Double DQN
-                    q = self.network(next_states, seed=sample_z)  # [particles, batch, action]
-                    best_actions = torch.argmax(q, dim=-1)  # get best action  [particles, batch]
-                    q_next = torch.stack([q_next[i, self.batch_indices, best_actions[i]] for i in range(config.particles)])#[p, batch, 1]
-                else:
-                    q_next = q_next.max(1)[0]
-                q_next = self.config.discount * q_next * (1 - terminals)
-                q_next.add_(rewards)
+                q_all, q_frozen_all = [], []
+                q_a_all, q_a_frozen_all = [], []
+                q_next_all, q_next_frozen_all = [], []
 
-                actions = tensor(actions).long()
-                max_actions = tensor(max_actions).long()
-                
-                ## Get main Q values
-                phi = self.network.body(states, seed=sample_z)
-                q = self.network.head(phi, seed=sample_z) # [particles, batch, action]
-               
-                max_actions = max_actions.transpose(0, 1).squeeze(-1)  # [particles, batch, actions]
+                for sample_z in all_samples:
+                    ## Get target q values
+                    q_next = self.target_network(next_states, seed=sample_z).detach()  # [particles, batch, action]
+                    if self.config.double_q:
+                        ## Double DQN
+                        q = self.network(next_states, seed=sample_z)  # [particles, batch, action]
+                        best_actions = torch.argmax(q, dim=-1)  # get best action  [particles, batch]
+                        q_next = torch.stack([q_next[i, self.batch_indices, best_actions[i]] for i in range(config.particles)])
+                    else:
+                        q_next = q_next.max(1)[0]
+                    q_next = self.config.discount * q_next * (1 - terminals)
+                    q_next.add_(rewards)
 
-                ## define q values with respect to all max actions (q), or the action taken (q_a)
-                q_a = torch.gather(q, dim=2, index=actions.unsqueeze(0).unsqueeze(-1).repeat(config.particles, 1, 1)) # :/
-                q = torch.stack([q[i, self.batch_indices, max_actions[i]] for i in range(config.particles)]) # [particles, batch]
+                    actions_ = tensor(actions).long()
+                    max_actions_ = tensor(max_actions).long()
+                    
+                    ## Get main Q values
+                    phi = self.network.body(states, seed=sample_z)
+                    q = self.network.head(phi, seed=sample_z) # [particles, batch, action]
+                   
+                    max_actions_ = max_actions_.transpose(0, 1).squeeze(-1)  # [particles, batch, actions]
 
-                alpha = self.alpha_schedule.value(self.total_steps)
-                q = q.transpose(0, 1).unsqueeze(-1) # [particles, batch, 1]
-                q_a = q_a.transpose(0, 1) # [particles, batch, 1]
-                q_next = q_next.transpose(0, 1).unsqueeze(-1)  # [particles, batch, 1]
-                
-                q, q_frozen = torch.split(q, self.config.particles//2, dim=1)  # [batch, particles//2, 1]
-                q_a, q_a_frozen = torch.split(q_a, self.config.particles//2, dim=1)  # [batch, particles//2, 1]
-                q_next, q_next_frozen = torch.split(q_next, self.config.particles//2, dim=1) # [batch, particles/2, 1]
+                    ## define q values with respect to all max actions (q), or the action taken (q_a)
+                    q_a = torch.gather(q, dim=2, index=actions_.unsqueeze(0).unsqueeze(-1).repeat(config.particles, 1, 1)) # :/
+                    q = torch.stack([q[i, self.batch_indices, max_actions_[i]] for i in range(config.particles)]) # [particles, batch]
 
-                q_frozen.detach()
-                q_a_frozen.detach()
-                q_next_frozen.detach()
-                
+                    alpha = self.alpha_schedule.value(self.total_steps)
+                    q = q.transpose(0, 1).unsqueeze(-1) # [particles, batch, 1]
+                    q_a = q_a.transpose(0, 1) # [particles, batch, 1]
+                    q_next = q_next.transpose(0, 1).unsqueeze(-1)  # [particles, batch, 1]
+                    
+                    q_all.append(q)
+                    q_a_all.append(q_a)
+                    q_next_all.append(q_next)
+                    
+                q_all = torch.stack(q_all)
+                q_a_all = torch.stack(q_a_all)
+                q_next_all = torch.stack(q_next_all)
+
+                # [z//2, batch, particles, 1]
+                q_all, q_frozen_all = torch.split(q_all, self.config.particles//2, dim=0)
+                q_a_all, q_a_frozen_all = torch.split(q_a_all, self.config.particles//2, dim=0)
+                q_next_all, q_next_frozen_all = torch.split(q_next_all, self.config.particles//2, dim=0)
+
+                q_frozen_all.detach()
+                q_a_frozen_all.detach()
+                q_next_frozen_all.detach()
+
+
                 # Loss functions
                 moment1_loss = (q_next.mean(1) - q.mean(1)).pow(2).mul(.5).mean()
                 moment2_loss = (q_next.var(1) - q.var(1)).pow(2).mul(.5).mean()
                 action_loss = (q_next - q_a).pow(2).mul(0.5)
                 sample_loss = (q_next - q).pow(2).mul(0.5) 
                 
+                # [z//2, batch, mean(p), 1] -> [z//2, batch, 1]
+                q_next_all = q_next_all.mean(2)
+                q_a_all = q_a_all.mean(2)
+                q_a_frozen_all = q_a_frozen_all.mean(2)
+                posterior_td_loss = (q_next_all - q_a_all).pow(2).mul(.5) 
+                
                 # choose which Q to learn with respect to
                 if config.svgd_q == 'sample':
                     svgd_q, svgd_q_frozen = q, q_frozen
                     td_loss = sample_loss# + moment1_loss# + moment1_loss
                 elif config.svgd_q == 'action':
-                    svgd_q, svgd_q_frozen = q_a, q_a_frozen
-                    td_loss = action_loss# + moment1_loss + moment2_loss
-
+                    svgd_q, svgd_q_frozen = q_a_all, q_a_frozen_all
+                    #td_loss = action_loss# + moment1_loss + moment2_loss
+                    td_loss = posterior_td_loss
+                
+                print ('posterior loss', td_loss.shape)
                 q_grad = autograd.grad(td_loss.sum(), inputs=svgd_q)[0]
-                q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]
+                q_grad = q_grad.unsqueeze(-1)  # [particles//2. batch, 1, 1]
                 
                 q_eps = svgd_q + torch.rand_like(svgd_q) * 1e-8
-                q_frozen_eps = q_frozen + torch.rand_like(svgd_q_frozen) * 1e-8
-
+                q_frozen_eps = svgd_q_frozen + torch.rand_like(svgd_q_frozen) * 1e-8
+                print (q_frozen_eps.shape, q_eps.shape)
                 kappa, grad_kappa = batch_rbf_xy(q_frozen_eps, q_eps) 
                 kappa = kappa.unsqueeze(-1)
                 
+                print (kappa.shape, q_grad.shape)
                 kernel_logp = torch.matmul(kappa.detach(), q_grad) # [n, 1]
                 svgd = (kernel_logp + alpha * grad_kappa).mean(1) # [n, theta]
                 
