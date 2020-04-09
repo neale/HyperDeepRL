@@ -37,8 +37,8 @@ def sweep(game, tag, model_fn, trials=50, manual=True, chain_len=4):
         setting = {
             'game': game,
             'tb_tag': tag,
-            'alpha_i': 1e-12,
-            'alpha_f': 1e-12,
+            'alpha_i': 100,
+            'alpha_f': 1e-8,
             'anneal': 2000*(chain_len+9),
             'lr': 1e-4,
             'freq': 100,
@@ -109,16 +109,17 @@ def dqn_feature(**kwargs):
     config.sgd_update_frequency = 1  # how often to do learning
     config.gradient_clip = config.grad_clip  # max gradient norm
     config.eval_interval = int(5e7) # int(5e3) 
-    config.max_steps = 2000 * (config.chain_len+9) # 500e3
+    config.max_steps = 1e7# 000 * (config.chain_len+9) # 500e3
     config.async_actor = False
-    config.alpha_anneal = config.max_steps#config.anneal  # how long to anneal SVGD alpha from init to final
+    config.alpha_anneal = 1000 * (config.chain_len+9)#config.anneal  # how long to anneal SVGD alpha from init to final
     config.alpha_init = config.alpha_i  # SVGD alpha strating value
     config.alpha_final = config.alpha_f  # SVGD alpha end value
     config.svgd_q = 'action'
     config.update = 'thompson'
 
     #run_steps(DQN_Sweep_SVGD_Agent(config))
-    run_steps(DQN_Dist_SVGD_Agent(config))
+    #run_steps(DQN_Dist_SVGD_Agent(config))
+    run_steps(DQN_Param_SVGD_Agent(config))
 
 
 if __name__ == '__main__':
@@ -131,7 +132,7 @@ if __name__ == '__main__':
 
     # game = 'bsuite-cartpole_swingup/0'
     game = 'NChain-v3'
-    for i in range(4, 101):
-        tag = 'normalk/p24_action_thompson_c{}'.format(i)
+    for i in range(4, 101, 2):
+        tag = 'harmonic_convergence/p24_action_thompson_c{}'.format(i)
         sweep(game, tag, dqn_feature, manual=True, trials=50, chain_len=i)
 

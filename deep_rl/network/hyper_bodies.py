@@ -92,6 +92,13 @@ class CartFCHyperBody(nn.Module):
         self.layers = nn.ModuleList([LinearGenerator(self.config['fc{}'.format(i+1)]).cuda() for i in range(n_layers)])
 
     def forward(self, x=None, z=None, theta=None):
+        if x is None:
+            weights = []
+            for i, layer in enumerate(self.layers):
+                w, b = layer(z[i])
+                weights.append(w)
+                weights.append(b)
+            return weights
         ones_mask = torch.ones(x.dim()).long().tolist()
         x = x.unsqueeze(0).repeat(z.shape[1], *ones_mask)
         

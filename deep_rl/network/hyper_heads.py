@@ -85,7 +85,7 @@ class DuelingHyperNet(nn.Module, BaseNet):
     def set_model_seed(self, seed):
         self.model_seed = seed
 
-    def forward(self, x, seed=None, to_numpy=False, theta=None):
+    def forward(self, x, seed=None, to_numpy=False):
         if not isinstance(x, torch.cuda.FloatTensor):
             x = tensor(x)
         if x.shape[0] == 1 and x.shape[1] == 1: ## dm_env returns one too many dimensions
@@ -93,25 +93,28 @@ class DuelingHyperNet(nn.Module, BaseNet):
         phi = self.body(x, seed)
         return self.head(phi, seed)
 
-    def body(self, x=None, seed=None):
+    def body(self, x=None, seed=None, theta=None):
         if not isinstance(x, torch.cuda.FloatTensor):
             x = tensor(x)
         z = seed if seed != None else self.model_seed
-        return self.features(x, z['features_z'])
+        return self.features(x, z['features_z'], theta)
 
-    def head(self, phi, seed=None):
+    def head(self, phi, seed=None, theta_v=None, theta_a=None):
         z = seed if seed != None else self.model_seed
-        value = self.fc_value(z['value_z'], phi)
-        advantage = self.fc_advantage(z['advantage_z'], phi)
+        value = self.fc_value(z['value_z'], phi, theta_v)
+        advantage = self.fc_advantage(z['advantage_z'], phi, theta_a)
         q = value.expand_as(advantage) + (advantage - advantage.mean(-1, keepdim=True).expand_as(advantage))
         return q
 
-    def sample_model(self, component):
+    def sample_model(self, component='q', seed=None):
+        seed = seed if seed is not None else self.model_seed
         param_sets = []
         if component == 'q':
-            param_sets.extend(self.features(z=self.model_seed['features_z']))
-            param_sets.extend(self.fc_value(z=self.model_seed['value_z']))
-            param_sets.extend(self.fc_advantage(z=self.model_seed['advantage_z']))
+            #param_sets.extend(self.features(z=seed['features_z']))
+            return self.fc_value(z=seed['value_z']), self.fc_advantage(z=seed['advantage_z'])
+
+            param_sets.extend(self.fc_value(z=seed['value_z']))
+            param_sets.extend(self.fc_advantage(z=seed['advantage_z']))
         return param_sets
 
     def predict_action(self, x, pred, to_numpy=False):
