@@ -44,44 +44,51 @@ class DQNDistSVGDActor(BaseActor):
     def visualize(self, state):
         states = self.get_states(state)
         samples = self._network.sweep_samples()
-        plt.figure(figsize=(12, 15), dpi=200)
-        plt.suptitle('Implicit Value Networks - Episode {}'.format(self.ep))
-        plt.xlabel('State')
-        plt.ylabel('Q(s, a)')
-        plt.grid(True)
-        left_v, right_v, v = [], [], []
-        print (len(samples))
-        for i, sample in enumerate(samples):
-            value_f = []
-            q_vals = self._network(states.cuda(), seed=sample)
-            value = q_vals.mean(0)
-            left_value = value[:, 0]
-            right_value = value[:, 1]
-            value = q_vals.mean(0).mean(1)
-            left_v.append(left_value.detach().cpu())
-            right_v.append(right_value.detach().cpu())
-            v.append(value.detach().cpu())
-            
+        with plt.style.context('seaborn-dark'):
+            plt.figure(figsize=(12, 15), dpi=200)
+            plt.suptitle('Implicit Value Networks - Episode {}'.format(self.ep))
+            left_v, right_v, v = [], [], []
+            print (len(samples))
+            for i, sample in enumerate(samples):
+                value_f = []
+                q_vals = self._network(states.cuda(), seed=sample)
+                value = q_vals.mean(0)
+                left_value = value[:, 0]
+                right_value = value[:, 1]
+                value = q_vals.mean(0).mean(1)
+                left_v.append(left_value.detach().cpu())
+                right_v.append(right_value.detach().cpu())
+                v.append(value.detach().cpu())
+                
+                plt.subplot(311)
+                plt.plot(range(len(states)), left_value.detach().cpu(), linewidth=.5)
+                plt.subplot(312)
+                plt.plot(range(len(states)), right_value.detach().cpu(), linewidth=.5)
+                plt.subplot(313)
+                plt.plot(range(len(states)), (right_value-left_value).detach().cpu(), linewidth=.5)
+
             plt.subplot(311)
-            plt.plot(range(len(states)), left_value.detach().cpu(), linewidth=.5)
+            plt.title('Left Action Value')
+            plt.xlabel('State')
+            plt.ylabel('Q(s, a)')
+            plt.grid(True)
+            lvals = np.asarray([t.numpy() for t in left_v]).mean(0)
+            plt.plot(range(len(states)), lvals, color='black', linestyle='--', linewidth=2)
             plt.subplot(312)
-            plt.plot(range(len(states)), right_value.detach().cpu(), linewidth=.5)
+            plt.title('Right Action Value')
+            plt.xlabel('State')
+            plt.ylabel('Q(s, a)')
+            plt.grid(True)
+            rvals = np.asarray([t.numpy() for t in right_v]).mean(0)
+            plt.plot(range(len(states)), rvals, color='black', linestyle='--', linewidth=2)
             plt.subplot(313)
-            plt.plot(range(len(states)), (right_value-left_value).detach().cpu(), linewidth=.5)
+            plt.title('Right Left Difference')
+            plt.xlabel('State')
+            plt.ylabel('Q(s, a)')
+            plt.grid(True)
+            plt.plot(range(len(states)), rvals-lvals, color='black', linestyle='--', linewidth=2)
 
-        plt.subplot(311)
-        plt.title('Left Action Value')
-        lvals = np.asarray([t.numpy() for t in left_v]).mean(0)
-        plt.plot(range(len(states)), lvals, color='black', linestyle='--', linewidth=2)
-        plt.subplot(312)
-        plt.title('Right Action Value')
-        rvals = np.asarray([t.numpy() for t in right_v]).mean(0)
-        plt.plot(range(len(states)), rvals, color='black', linestyle='--', linewidth=2)
-        plt.subplot(313)
-        plt.title('Right Left Difference')
-        plt.plot(range(len(states)), rvals-lvals, color='black', linestyle='--', linewidth=2)
-
-        path = 'Vis_Normal/svgd_tinyer/chain_len_{}/'.format(len(states))
+        path = 'Vis_Normal/chain25_action_2m/chain_len_{}/'.format(len(states))
         os.makedirs(path, exist_ok=True)
         plt.savefig(path+'episode_{}.png'.format(self.ep))
         plt.close('all')
@@ -278,10 +285,10 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
                 # choose which Q to learn with respect to
                 if config.svgd_q == 'sample':
                     svgd_q, svgd_q_frozen = q, q_frozen
-                    td_loss = sample_loss# + moment1_loss# + moment1_loss
+                    td_loss = sample_loss + moment1_loss + moment1_loss
                 elif config.svgd_q == 'action':
                     svgd_q, svgd_q_frozen = q_a, q_a_frozen
-                    td_loss = action_loss# + moment1_loss + moment2_loss
+                    td_loss = action_loss + moment1_loss + moment2_loss
 
                 q_grad = autograd.grad(td_loss.sum(), inputs=svgd_q)[0]
                 q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]

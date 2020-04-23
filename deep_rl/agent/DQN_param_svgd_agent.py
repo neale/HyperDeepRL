@@ -89,7 +89,7 @@ class DQNParamSVGDActor(BaseActor):
             plt.title('Right Left Difference')
             plt.plot(range(len(states)), rvals-lvals, color='black', linestyle='--', linewidth=2)
 
-        path = 'vis_normal/forever run/chain_len_{}/'.format(len(states))
+        path = 'vis_normal/SVGD-fixed_ij-converge-Gaussian/chain_len_td_{}/'.format(len(states))
         os.makedirs(path, exist_ok=True)
         plt.savefig(path+'episode_{}.png'.format(self.ep))
         plt.close('all')
@@ -204,7 +204,44 @@ class DQN_Param_SVGD_Agent(BaseAgent):
         action = np.array([action])
         self.config.state_normalizer.unset_read_only()
         return action
+    
+    def get_q_values(self, net, target_net, sample_z, transition, config):
+        pa, pv = net
+        pta, ptv = target_net
+        terminals, rewards, actions, max_actions, states, next_states = transition
+        ## Get target q values
+        q_next_phi = self.target_network.body(next_states, seed=sample_z)
+        q_next = self.target_network.head(q_next_phi, seed=sample_z, theta_v=ptv, theta_a=pta).detach()
+        #q_next = self.target_network(next_states, seed=sample_z).detach()  # [particles, batch, action]
+        
+        if self.config.double_q:
+            q_phi = self.network.body(next_states, seed=sample_z)
+            q = self.network.head(q_phi, seed=sample_z, theta_v=pv, theta_a=pa)
+            # q = self.network(next_states, seed=sample_z)  # [particles, batch, action]
+            best_actions = torch.argmax(q, dim=-1)  # get best action  [particles, batch]
+            q_next = torch.stack([q_next[i, self.batch_indices, best_actions[i]] for i in range(config.particles)])#[p, batch, 1]
+        else:
+            q_next = q_next.max(1)[0]
+        q_next = self.config.discount * q_next * (1 - terminals)
+        q_next.add_(rewards)
 
+        actions = tensor(actions).long()
+        max_actions = tensor(max_actions).long()
+        
+        ## Get main Q values
+        phi = self.network.body(states, seed=sample_z)
+        q = self.network.head(phi, seed=sample_z, theta_v=pv, theta_a=pa) # [particles, batch, action]
+        max_actions = max_actions.transpose(0, 1).squeeze(-1)  # [particles, batch, actions]
+
+        ## define q values with respect to all max actions (q), or the action taken (q_a)
+        q_a = torch.gather(q, dim=2, index=actions.unsqueeze(0).unsqueeze(-1).repeat(config.particles, 1, 1)) # :/
+        q = torch.stack([q[i, self.batch_indices, max_actions[i]] for i in range(config.particles)]) # [particles, batch]
+
+        q = q.transpose(0, 1).unsqueeze(-1) # [particles, batch, 1]
+        q_a = q_a.transpose(0, 1) # [particles, batch, 1]
+        q_next = q_next.transpose(0, 1).unsqueeze(-1)  # [particles, batch, 1]
+        return q, q_a, q_next
+ 
     def step(self):
         config = self.config
 
@@ -247,16 +284,21 @@ class DQN_Param_SVGD_Agent(BaseAgent):
                 pz = []
                 for p in [p_v[0], p_v[1], p_a[0], p_a[1]]:
                     pz.append(p.view(config.particles, -1))
-                pz = torch.cat(pz, -1) # [particles, n_params]
+                pz_i = torch.cat(pz, -1) # [particles, n_params]
 
                 pz_t = []
                 for p in [p_target_v[0], p_target_v[1], p_target_a[0], p_target_a[1]]:
                     pz_t.append(p.view(config.particles, -1))
-                pz_t = torch.cat(pz_t, -1) # [particles, n_params]
+                pz_t = torch.cat(pz_t, -1).detach() # [particles, n_params]
+
+                resample_z = self.network.sample_model_seed(return_seed=True) 
+                pv, pa = self.network.sample_model(seed=sample_z) #[layers, particles, layer_dim]
+                resample_pz = []
+                for p in [pv[0], pv[1], pa[0], pa[1]]:
+                    resample_pz.append(p.view(config.particles, -1))
+                pz_j = torch.cat(resample_pz, -1) # [particles, n_params]
 
                 # p and p_target are the jagged lists of parameters for each layer that get passed to the network functions
-
-
                 # this is going to be bad for the first implementation. Basically in order to take grad(TD, params)
                 # I need to use this flattened list in the graph, which means partitioning it as I send it in
 
@@ -264,84 +306,72 @@ class DQN_Param_SVGD_Agent(BaseAgent):
                 # v_b : [24, 1, 1], 1
                 # a_w : [24, 2, 256], 512
                 # a_b : [24, 1, 2], 2
+                
+                pv_j = (pz_j[:, :256].view(24, 1, 256), pz_j[:, 256:257].view(24, 1, 1))
+                pa_j = (pz_j[:, 257:769].view(24, 2, 256), pz_j[:, 769:].view(24, 1, 2))
 
-                pv = (pz[:, :256].view(24, 1, 256), pz[:, 256:257].view(24, 1, 1))
-                pa = (pz[:, 257:769].view(24, 2, 256), pz[:, 769:].view(24, 1, 2))
+                pv_i = (pz_i[:, :256].view(24, 1, 256), pz_i[:, 256:257].view(24, 1, 1))
+                pa_i = (pz_i[:, 257:769].view(24, 2, 256), pz_i[:, 769:].view(24, 1, 2))
                 
                 ptv = (pz_t[:, :256].view(24, 1, 256), pz_t[:, 256:257].view(24, 1, 1))
                 pta = (pz_t[:, 257:769].view(24, 2, 256), pz_t[:, 769:].view(24, 1, 2))
                 
-                ## Get target q values
-                q_next_phi = self.target_network.body(next_states, seed=sample_z)
-                q_next = self.target_network.head(q_next_phi, seed=sample_z, theta_v=ptv, theta_a=pta).detach()
-                #q_next = self.target_network(next_states, seed=sample_z).detach()  # [particles, batch, action]
-                
-                if self.config.double_q:
-                    ## Double DQN
-                    q_phi = self.network.body(next_states, seed=sample_z)
-                    q = self.network.head(q_phi, seed=sample_z, theta_v=pv, theta_a=pa)
-                    # q = self.network(next_states, seed=sample_z)  # [particles, batch, action]
-                    best_actions = torch.argmax(q, dim=-1)  # get best action  [particles, batch]
-                    q_next = torch.stack([q_next[i, self.batch_indices, best_actions[i]] for i in range(config.particles)])#[p, batch, 1]
-                else:
-                    q_next = q_next.max(1)[0]
-                q_next = self.config.discount * q_next * (1 - terminals)
-                q_next.add_(rewards)
+                transition = terminals, rewards, actions, max_actions, states, next_states
 
-                actions = tensor(actions).long()
-                max_actions = tensor(max_actions).long()
-                
-                ## Get main Q values
-                phi = self.network.body(states, seed=sample_z)
-                q = self.network.head(phi, seed=sample_z, theta_v=pv, theta_a=pa) # [particles, batch, action]
-                max_actions = max_actions.transpose(0, 1).squeeze(-1)  # [particles, batch, actions]
-
-                ## define q values with respect to all max actions (q), or the action taken (q_a)
-                q_a = torch.gather(q, dim=2, index=actions.unsqueeze(0).unsqueeze(-1).repeat(config.particles, 1, 1)) # :/
-                q = torch.stack([q[i, self.batch_indices, max_actions[i]] for i in range(config.particles)]) # [particles, batch]
-
-                alpha = self.alpha_schedule.value(self.total_steps)
-                q = q.transpose(0, 1).unsqueeze(-1) # [particles, batch, 1]
-                q_a = q_a.transpose(0, 1) # [particles, batch, 1]
-                q_next = q_next.transpose(0, 1).unsqueeze(-1)  # [particles, batch, 1]
-                
+                qj, qj_a, qj_next = self.get_q_values((pa_j, pv_j), (pta, ptv), sample_z, transition, config)
+                qi, qi_a, qi_next = self.get_q_values((pa_i, pv_i), (pta, ptv), resample_z, transition, config)
+                      
                 # Loss functions
-                moment1_loss = (q_next.mean(1) - q.mean(1)).pow(2).mul(.5).mean()
-                moment2_loss = (q_next.var(1) - q.var(1)).pow(2).mul(.5).mean()
-                action_loss = (q_next - q_a).pow(2).mul(0.5)
-                sample_loss = (q_next - q).pow(2).mul(0.5) 
+                moment1_loss_j = (qj_next.mean(1) - qj.mean(1)).pow(2).mul(.5).mean()
+                moment2_loss_j = (qj_next.var(1) - qj.var(1)).pow(2).mul(.5).mean()
+                action_loss_j = (qj_next - qj_a).pow(2).mul(0.5)
+                sample_loss_j = (qj_next - qj).pow(2).mul(0.5) 
                 
+                moment1_loss_i = (qi_next.mean(1) - qi.mean(1)).pow(2).mul(.5).mean()
+                moment2_loss_i = (qi_next.var(1) - qi.var(1)).pow(2).mul(.5).mean()
+                action_loss_i = (qi_next - qi_a).pow(2).mul(0.5)
+                sample_loss_i = (qi_next - qi).pow(2).mul(0.5) 
                 # choose which Q to learn with respect to
+
                 if config.svgd_q == 'sample':
-                    svgd_q, svgd_q_frozen = pz, pz_frozen
-                    td_loss = sample_loss# + moment1_loss# + moment1_loss
+                    td_loss_j = sample_loss_j + moment1_loss_j + moment2_loss_j
+                    td_loss_i = sample_loss_i + moment1_loss_i + moment2_loss_i
                 elif config.svgd_q == 'action':
-                    td_loss = action_loss# + moment1_loss + moment2_loss
+                    td_loss_j = action_loss_j# + moment1_loss_j + moment2_loss_j
+                    td_loss_i = action_loss_i# + moment1_loss_i + moment2_loss_i
 
-                q_grad = autograd.grad(td_loss.sum(), inputs=pz)[0]
-                q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]
-                print (q_grad.shape)
                 
-                # resample for more particles 
-                resample_z = self.network.sample_model_seed(return_seed=True) 
-                pv, pa = self.network.sample_model(seed=sample_z) #[layers, particles, layer_dim]
-                resample_pz = []
-                for p in [pv[0], pv[1], pa[0], pa[1]]:
-                    resample_pz.append(p.view(config.particles, -1))
-                pz_frozen = torch.cat(resample_pz, -1).detach() # [particles, n_params]
-
-                pz_eps = pz + torch.rand_like(pz) * 1e-8
-                pz_frozen_eps = pz_frozen + torch.rand_like(pz_frozen) * 1e-8
+                alpha = self.alpha_schedule.value(self.total_steps)
+                # q_grads = []
+                td_grads = td_loss_j#.mean(0)
+                # for i in range(config.particles):
+                #    td_grads[i] = autograd.grad(td_grads[i], inputs=pz_j[i])
+                td_grads.detach()
+                q_grad = autograd.grad(td_grads.sum(), inputs=pz_j)[0]
+                #self.optimizer.zero_grad()
+                #autograd.backward(pz_j, grad_tensors=q_grad.detach())
+                q_grad = q_grad.unsqueeze(2).transpose(1, 2)  # [particles, theta, 1] -> [particles, 1, theta]
+                q_grad = q_grad.unsqueeze(2).transpose(0, 1)  # [particles, 1, 1, theta] -> [1, particles, 1, theta]
+                q_grad.detach()
                 
-                kappa, grad_kappa = batch_rbf_xy(pz_frozen_eps, pz_eps) 
+                pz_j_eps = pz_j + torch.rand_like(pz_j) * 1e-8
+                pz_i_eps = pz_i + torch.rand_like(pz_i) * 1e-8
+                
+                kappa, grad_kappa = batch_rbf_xy(pz_j_eps, pz_i_eps) # grad w.r.t pz_j
                 kappa = kappa.unsqueeze(-1)
                 
-                kernel_logp = torch.matmul(kappa.detach(), q_grad.mean(1, keepdim=True)) # [n, 1]
+                print (q_grad.shape, kappa.shape)
+                kernel_logp = torch.matmul(kappa, q_grad) # [n, 1]
+                # kernel_logp = q_grad.mean(1, keepdim=True)
                 svgd = (kernel_logp + alpha * grad_kappa).mean(1).squeeze(0) # [n, theta]
+                print (svgd.shape)
                 
                 self.optimizer.zero_grad()
-                autograd.backward(pz, grad_tensors=svgd.detach())
+                autograd.backward(pz_i, grad_tensors=svgd.detach())
                 
+                #self.optimizer.zero_grad()
+                #td_loss_j.mean().backward()
+
                 for param in self.network.parameters():
                     if param.grad is not None:
                         param.grad.data *= 1./config.particles
@@ -351,9 +381,9 @@ class DQN_Param_SVGD_Agent(BaseAgent):
 
                 with config.lock:
                     self.optimizer.step()
-                self.logger.add_scalar('td_loss', td_loss.mean(), self.total_steps)
-                self.logger.add_scalar('grad_kappa', grad_kappa.mean(), self.total_steps)
-                self.logger.add_scalar('kappa', kappa.mean(), self.total_steps)
+                self.logger.add_scalar('td_loss', td_loss_j.mean(), self.total_steps)
+                #self.logger.add_scalar('grad_kappa', grad_kappa.mean(), self.total_steps)
+                #self.logger.add_scalar('kappa', kappa.mean(), self.total_steps)
             
                 #if self.total_steps / self.config.sgd_update_frequency % \
                 #        self.config.target_network_update_freq == 0:
