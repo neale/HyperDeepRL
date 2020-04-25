@@ -45,7 +45,7 @@ class DQNDistSVGDActor(BaseActor):
         states = self.get_states(state)
         samples = self._network.sweep_samples()
         with plt.style.context('seaborn-dark'):
-            plt.figure(figsize=(12, 15), dpi=200)
+            plt.figure(figsize=(12, 15), dpi=100)
             plt.suptitle('Implicit Value Networks - Episode {}'.format(self.ep))
             left_v, right_v, v = [], [], []
             print (len(samples))
@@ -88,7 +88,7 @@ class DQNDistSVGDActor(BaseActor):
             plt.grid(True)
             plt.plot(range(len(states)), rvals-lvals, color='black', linestyle='--', linewidth=2)
 
-        path = 'Vis_Normal/chain25_action_2m/chain_len_{}/'.format(len(states))
+        path = 'vis_normal/check_svgd/chain_len_{}/'.format(len(states))
         os.makedirs(path, exist_ok=True)
         plt.savefig(path+'episode_{}.png'.format(self.ep))
         plt.close('all')
@@ -148,9 +148,9 @@ class DQNDistSVGDActor(BaseActor):
         info[0]['q_mean'] = q_mean.mean()
         info[0]['q_var'] = q_var.mean()
 
-        if info[0]['terminate'] == True:
-            self.sigterm = True
-            self.close()
+        #if info[0]['terminate'] == True:
+        #    self.sigterm = True
+        #    self.close()
         entry = [self._state[0], action, actions_log, reward[0], next_state[0], int(done[0]), info]
         self._total_steps += 1
         self._state = next_state
@@ -277,34 +277,42 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
                 q_next_frozen.detach()
                 
                 # Loss functions
-                moment1_loss = (q_next.mean(1) - q.mean(1)).pow(2).mul(.5).mean()
-                moment2_loss = (q_next.var(1) - q.var(1)).pow(2).mul(.5).mean()
-                action_loss = (q_next - q_a).pow(2).mul(0.5)
-                sample_loss = (q_next - q).pow(2).mul(0.5) 
+                moment1_loss_i = (q_next.mean(1) - q.mean(1)).pow(2).mul(.5).mean()
+                moment2_loss_i = (q_next.var(1) - q.var(1)).pow(2).mul(.5).mean()
+                action_loss_i = (q_next - q_a).pow(2).mul(0.5)
+                sample_loss_i = (q_next - q).pow(2).mul(0.5) 
                 
+                moment1_loss_j = (q_next.mean(1) - q_frozen.mean(1)).pow(2).mul(.5).mean()
+                moment2_loss_j = (q_next.var(1) - q_frozen.var(1)).pow(2).mul(.5).mean()
+                action_loss_j = (q_next - q_a_frozen).pow(2).mul(0.5)
+                sample_loss_j = (q_next - q_frozen).pow(2).mul(0.5) 
                 # choose which Q to learn with respect to
                 if config.svgd_q == 'sample':
-                    svgd_q, svgd_q_frozen = q, q_frozen
-                    td_loss = sample_loss + moment1_loss + moment1_loss
+                    svgd_qi, svgd_qj = q, q_frozen
+                    td_loss_i = sample_loss_j + moment1_loss_i + moment1_loss_i
+                    td_loss_j = sample_loss_i + moment1_loss_j + moment1_loss_j
                 elif config.svgd_q == 'action':
-                    svgd_q, svgd_q_frozen = q_a, q_a_frozen
-                    td_loss = action_loss + moment1_loss + moment2_loss
+                    svgd_qi, svgd_qj = q_a, q_a_frozen
+                    td_loss_i = action_loss_i# + moment1_loss_i + moment2_loss_i
+                    td_loss_j = action_loss_j# + moment1_loss_j + moment2_loss_j
 
-                q_grad = autograd.grad(td_loss.sum(), inputs=svgd_q)[0]
+                q_grad = autograd.grad(td_loss_j.sum(), inputs=svgd_qj)[0]
+                #self.optimizer.zero_grad()
+                #autograd.backward(svgd_qi, grad_tensors=q_grad.detach())
                 q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]
                 
-                q_eps = svgd_q + torch.rand_like(svgd_q) * 1e-8
-                q_frozen_eps = q_frozen + torch.rand_like(svgd_q_frozen) * 1e-8
+                qi_eps = svgd_qi + torch.rand_like(svgd_qi) * 1e-8
+                qj_eps = svgd_qj + torch.rand_like(svgd_qj) * 1e-8
 
-                kappa, grad_kappa = batch_rbf_xy(q_frozen_eps, q_eps) 
+                kappa, grad_kappa = batch_rbf_xy(qj_eps, qi_eps) 
                 kappa = kappa.unsqueeze(-1)
                 
                 kernel_logp = torch.matmul(kappa.detach(), q_grad) # [n, 1]
                 svgd = (kernel_logp + alpha * grad_kappa).mean(1) # [n, theta]
                 
                 self.optimizer.zero_grad()
-                autograd.backward(svgd_q, grad_tensors=svgd.detach())
-                
+                autograd.backward(svgd_qi, grad_tensors=svgd.detach())
+
                 for param in self.network.parameters():
                     if param.grad is not None:
                         param.grad.data *= 1./config.particles
@@ -314,7 +322,7 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
 
                 with config.lock:
                     self.optimizer.step()
-                self.logger.add_scalar('td_loss', td_loss.mean(), self.total_steps)
+                self.logger.add_scalar('td_loss', td_loss_i.mean(), self.total_steps)
                 self.logger.add_scalar('grad_kappa', grad_kappa.mean(), self.total_steps)
                 self.logger.add_scalar('kappa', kappa.mean(), self.total_steps)
             
