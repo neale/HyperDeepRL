@@ -200,7 +200,7 @@ class DQN_Param_SVGD_Agent(BaseAgent):
         if self.total_steps == self.config.exploration_steps+1:
             print ('pure exploration finished')
 
-        if self.total_steps > self.config.exploration_steps: and self.actor.update:
+        if self.total_steps > self.config.exploration_steps and self.actor.update:
             for update in tqdm(range(self.actor.update_steps), desc='SGD Q updates'):
                 experiences = self.replay.sample()
                 states, actions, max_actions, rewards, next_states, terminals = experiences
