@@ -130,7 +130,7 @@ if __name__ == '__main__':
     # select_device(-1)
     select_device(0)
 
-    tag = 'particle_qgrad_test/p24_sample1'
+    tag = 'cartpole_gaussian_qgrad/p100_sample2'
     game = 'bsuite-cartpole_swingup/0'
     sweep(game, tag, dqn_feature, manual=True, trials=50)
 
