@@ -38,7 +38,7 @@ def sweep(game, tag, model_fn, trials=50, manual=True, chain_len=4):
             'game': game,
             'tb_tag': tag,
             'alpha_i': 10.0,
-            'alpha_f': 0.01,
+            'alpha_f': 0.00,
             'anneal': 1000*(chain_len+9),
             'lr': 1e-4,
             'freq': 100,
@@ -116,9 +116,11 @@ def dqn_feature(**kwargs):
     config.alpha_final = config.alpha_f  # SVGD alpha end value
     config.svgd_q = 'action'
     config.update = 'thompson'
-
+    if config.update == 'thompson':
+        run_steps(DQN_Thompson_Agent(config))
+    elif config.update == 'sgd':
+        run_steps(DQN_SGD_Agent(config))
     #run_steps(DQN_Sweep_SVGD_Agent(config))
-    run_steps(DQN_Dist_SVGD_Agent(config))
     # run_steps(DQN_Param_SVGD_Agent(config))
 
 
@@ -133,6 +135,6 @@ if __name__ == '__main__':
     # game = 'bsuite-cartpole_swingup/0'
     game = 'NChain-v3'
     for i in range(15, 101, 2):
-        tag = 'svgd-check-converge/p24_action_thompson_c{}'.format(i)
+        tag = 'svgd-check-converge_anneal0/p24_action_thompson_c{}'.format(i)
         sweep(game, tag, dqn_feature, manual=True, trials=50, chain_len=i)
 

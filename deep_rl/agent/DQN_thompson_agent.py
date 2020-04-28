@@ -21,7 +21,7 @@ matplotlib.use('pdf')
 import matplotlib.pyplot as plt
 
 
-class DQNDistSVGDActor(BaseActor):
+class DQNThompsonActor(BaseActor):
     def __init__(self, config):
         BaseActor.__init__(self, config)
         self.config = config
@@ -88,7 +88,7 @@ class DQNDistSVGDActor(BaseActor):
             plt.grid(True)
             plt.plot(range(len(states)), rvals-lvals, color='black', linestyle='--', linewidth=2)
 
-        path = 'vis_normal/check_svgd/chain_len_{}/'.format(len(states))
+        path = 'vis_normal/check_svgd_anneal0/chain_len_{}/'.format(len(states))
         os.makedirs(path, exist_ok=True)
         plt.savefig(path+'episode_{}.png'.format(self.ep))
         plt.close('all')
@@ -158,7 +158,7 @@ class DQNDistSVGDActor(BaseActor):
         return entry
 
 
-class DQN_Dist_SVGD_Agent(BaseAgent):
+class DQN_Thompson_Agent(BaseAgent):
     def __init__(self, config):
         BaseAgent.__init__(self, config)
         self.config = config
@@ -166,7 +166,7 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
         config.lock = mp.Lock()
 
         self.replay = config.replay_fn()
-        self.actor = DQNDistSVGDActor(config)
+        self.actor = DQNThompsonActor(config)
 
         self.network = config.network_fn()
         self.network.share_memory()
@@ -236,7 +236,6 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
                 rewards = tensor(rewards)
                 
                 sample_z = self.network.sample_model_seed(return_seed=True) 
-                # all_samples = self.network.sweep_samples()
                 
                 ## Get target q values
                 q_next = self.target_network(next_states, seed=sample_z).detach()  # [particles, batch, action]
@@ -297,8 +296,6 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
                     td_loss_j = action_loss_j# + moment1_loss_j + moment2_loss_j
 
                 q_grad = autograd.grad(td_loss_j.sum(), inputs=svgd_qj)[0]
-                #self.optimizer.zero_grad()
-                #autograd.backward(svgd_qi, grad_tensors=q_grad.detach())
                 q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]
                 
                 qi_eps = svgd_qi + torch.rand_like(svgd_qi) * 1e-8
@@ -326,8 +323,5 @@ class DQN_Dist_SVGD_Agent(BaseAgent):
                 self.logger.add_scalar('grad_kappa', grad_kappa.mean(), self.total_steps)
                 self.logger.add_scalar('kappa', kappa.mean(), self.total_steps)
             
-                #if self.total_steps / self.config.sgd_update_frequency % \
-                #        self.config.target_network_update_freq == 0:
-                #     self.target_network.load_state_dict(self.network.state_dict())
             self.target_network.load_state_dict(self.network.state_dict())
             self.actor.update = False 
