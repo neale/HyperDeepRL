@@ -34,24 +34,27 @@ class DQNSGDActor(BaseActor):
             particle_max = q_values.argmax(-1)
             abs_max = q_values.max(2)[0].argmax()
             q_max = q_values[abs_max]
-            
-        q_max = to_np(q_max).flatten()
+
+        q = []
+        samples_z = self._network.sweep_samples()
+        for sample_z in samples_z:
+            q.append(self._network(state, seed=sample_z))
+        posterior = torch.stack(q)
+
         q_var = to_np(q_values.var(0))
         q_mean = to_np(q_values.mean(0))
         q_random = to_np(q_values[self.k])
         
-        q_prob = q_values.max(0)[0]
-        q_prob = q_prob + q_prob.min().abs() + 1e-8 # to avoid negative or 0 probability of taking an action
-
         if self._total_steps < config.exploration_steps \
                 or np.random.rand() < config.random_action_prob():
-                action = np.random.randint(0, len(q_max))
-                actions_log = np.random.randint(0, len(q_max), size=(config.particles, 1))
+                action = np.random.randint(0, 3)
+                actions_log = np.random.randint(0, 3, size=(config.particles, 1))
         else:
-            # action = np.argmax(q_max)  # Max Action
-            action = np.argmax(q_mean)  # Mean Action
-            #action = np.argmax(q_random)  # Random Head Action
-            # action = torch.multinomial(q_prob.cpu(), 1, replacement=True).numpy()[0] # Sampled Action
+            if config.exp_action == 'maxmean':
+                action = np.argmax(q_mean)  # Mean Action
+            elif config.exp_action == 'random':
+                action = np.argmax(q_random)  # Random Head Action
+
             actions_log = to_np(particle_max)
         
         next_state, reward, done, info = self._task.step([action])
@@ -60,19 +63,15 @@ class DQNSGDActor(BaseActor):
         if done:
             self.episode_steps = 0
             self._network.sample_model_seed()
+            self.k = np.random.choice(config.particles, 1)[0]
             if self._task.record:
                 self._task.record_or_not(info)
-                self.k = np.random.choice(config.particles, 1)[0]
         
         # Add Q value estimates to info
         info[0]['q_mean'] = q_mean.mean()
         info[0]['q_var'] = q_var.mean()
+        info[0]['p_var'] = posterior.mean(1).var(0).mean()
 
-        #if np.random.rand() < config.log_random_action_prob:
-        #    action = np.random.randint(0, len(q_max))
-        #softmax_prob = torch.nn.functional.softmax(q_values.mean(0), dim=-1)
-        #softmax_prob_np = softmax_prob.view(-1).detach().cpu().numpy()
-        #softmax_action = np.random.choice(3, 1, softmax_prob_np)
         entry = [self._state[0], action, actions_log, reward[0], next_state[0], int(done[0]), info]
         self._total_steps += 1
         self._state = next_state
@@ -170,6 +169,7 @@ class DQN_SGD_Agent(BaseAgent):
             ## Get main Q values
             phi = self.network.body(states, seed=sample_z)
             q = self.network.head(phi, seed=sample_z) # [particles, batch, action]
+            #print ('Learn Q Actions Var: ', q.var(0)[0])
            
             max_actions = max_actions.transpose(0, 1).squeeze(-1)  # [particles, batch, actions]
 

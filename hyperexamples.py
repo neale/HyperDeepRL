@@ -36,7 +36,7 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
         setting = {
             'game': game,
             'tb_tag': tag,
-            'alpha_i': 10,
+            'alpha_i': 1,
             'alpha_f': 0.1,
             'anneal': 500e3,
             'lr': 1e-4,
@@ -45,7 +45,7 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
             'hidden': 256,
             'replay_size': int(1e5),
             'replay_bs': 128,
-            'dist': 'softmax'
+            'dist': 'multivariate_normal'
         }
         print ('Running Config: ')
         for (k, v) in setting.items():
@@ -98,22 +98,23 @@ def dqn_feature(**kwargs):
     config.replay_fn = lambda: Replay(memory_size=config.replay_size, batch_size=config.replay_bs)
     # config.replay_fn = lambda: AsyncReplay(memory_size=config.replay_size, batch_size=config.replay_bs)
     config.render = True  # Render environment at every train step
-    config.random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
-    #config.log_random_action_prob = 0.05
+    #config.random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
+    config.random_action_prob = LinearSchedule(0, 0, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
     config.discount = 0.99  # horizon
     config.target_network_update_freq = config.freq  # hard update to target network
     config.exploration_steps = 0#config.replay_bs  # random actions taken at the beginning to fill the replay buffer
     config.double_q = True  # use double q update
     config.sgd_update_frequency = 1  # how often to do learning
     config.gradient_clip = config.grad_clip  # max gradient norm
-    config.eval_interval = int(5e3) 
+    config.eval_interval = int(20e3) 
     config.max_steps = 500e3
     config.async_actor = False
     config.alpha_anneal = config.anneal  # how long to anneal SVGD alpha from init to final
     config.alpha_init = config.alpha_i  # SVGD alpha strating value
     config.alpha_final = config.alpha_f  # SVGD alpha end value
-    config.svgd_q = 'sample'
-    config.update = 'sgd'
+    config.svgd_q = 'action'  # <action, sample>
+    config.update = 'sgd'  # <sgd, thompson>
+    config.exp_action = 'random' # <maxmean, random>
 
     #run_steps(DQN_Param_SVGD_Agent(config))
     if config.update == 'sgd':
@@ -129,8 +130,7 @@ if __name__ == '__main__':
     random_seed()
     # select_device(-1)
     select_device(0)
-
-    tag = 'cartpole_gaussian_qgrad/p100_sample2'
+    tag = 'cartpole_noise/action_mnormal_ortho_random'
     game = 'bsuite-cartpole_swingup/0'
     sweep(game, tag, dqn_feature, manual=True, trials=50)
 

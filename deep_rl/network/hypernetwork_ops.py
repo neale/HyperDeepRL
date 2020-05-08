@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .network_utils import *
 
 def linear(x):
     return x
@@ -25,8 +26,8 @@ class LinearMixer(nn.Module):
         self.act = getattr(torch.nn.functional, config.act)
         self.act_out = getattr(torch.nn.functional, config.act_out)
         self.d_hidden = config.d_hidden
-        self.linear1 = nn.Linear(self.s, self.d_hidden, bias=self.bias)
-        self.linear2 = nn.Linear(self.d_hidden, self.z*self.n_gen, bias=self.bias)
+        self.linear1 = layer_init(nn.Linear(self.s, self.d_hidden))#, bias=self.bias))
+        self.linear2 = layer_init(nn.Linear(self.d_hidden, self.z*self.n_gen))#, bias=self.bias))
 
     def forward(self, x):
         x = self.act(self.linear1(x))
