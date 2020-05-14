@@ -49,8 +49,8 @@ class DQNSGDActor(BaseActor):
                 actions_log = np.random.randint(0, len(q_max), size=(config.particles, 1))
         else:
             # action = np.argmax(q_max)  # Max Action
-            action = np.argmax(q_mean)  # Mean Action
-            #action = np.argmax(q_random)  # Random Head Action
+            # action = np.argmax(q_mean)  # Mean Action
+            action = np.argmax(q_random)  # Random Head Action
             # action = torch.multinomial(q_prob.cpu(), 1, replacement=True).numpy()[0] # Sampled Action
             actions_log = to_np(particle_max)
         
@@ -188,7 +188,7 @@ class DQN_SGD_Agent(BaseAgent):
 
             q_frozen.detach()
             q_a_frozen.detach()
-            q_next_frozen.detach()
+            q_next = q_next_frozen.detach()
             
             # Loss functions
             moment1_loss_i = (q_next.mean(1) - q.mean(1)).pow(2).mul(.5).mean()

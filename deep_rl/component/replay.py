@@ -60,6 +60,125 @@ class Replay:
         self.pos = 0
 
 
+class BalancedReplay:
+    def __init__(self, memory_size, batch_size, drop_prob=0, to_np=True):
+        self.memory_size = memory_size
+        self.pos_memory_size = memory_size // 2
+        self.neg_memory_size = memory_size - self.pos_memory_size
+        self.batch_size = batch_size
+        self.pos_batch_size = batch_size // 2
+        self.neg_batch_size = batch_size - self.pos_batch_size
+        self.data = []
+        self.pos_data = []
+        self.neg_data = []
+        self.loc = 0
+        self.pos_loc = 0
+        self.neg_loc = 0
+        self.drop_prob = drop_prob
+        self.to_np = to_np
+
+    def feed(self, experience):
+        # if len(self.data) > 10000:
+        #     import pdb; pdb.set_trace()
+        if self.loc >= len(self.data):
+            self.data.append(experience)
+        else:
+            self.data[self.loc] = experience
+        self.loc = (self.loc + 1) % self.memory_size
+
+    def feed_pos(self, experience):
+        self.feed(experience)
+        if experience[2] <= 0:
+            return
+        if self.pos_loc >= len(self.pos_data):
+            self.pos_data.append(experience)
+        else:
+            self.pos_data[self.pos_loc] = experience
+        self.pos_loc = (self.pos_loc + 1) % self.pos_memory_size
+
+    def feed_neg(self, experience):
+        if np.random.rand() < self.drop_prob:
+            return
+        self.feed(experience)
+        if experience[2] > 0:
+            return
+        if self.neg_loc >= len(self.neg_data):
+            self.neg_data.append(experience)
+        else:
+            self.neg_data[self.neg_loc] = experience
+        self.neg_loc = (self.neg_loc + 1) % self.neg_memory_size
+
+    def feed_batch(self, experience):
+        for exp in experience:
+            self.feed(exp)
+            # if exp[2] > 0:
+            #     self.pos_loc += 1
+            # else:
+            #     self.neg_loc += 1
+
+    def feed_pos_batch(self, experience):
+        for exp in experience:
+            self.feed_pos(exp)
+
+    def feed_neg_batch(self, experience):
+        for exp in experience:
+            self.feed_neg(exp)
+
+    def sample(self, batch_size=None):
+        if self.empty():
+            return None
+        if batch_size is None:
+            batch_size = self.batch_size
+
+        sampled_indices = [np.random.randint(0, len(self.data)) for _ in range(batch_size)]
+        sampled_data = [self.data[ind] for ind in sampled_indices]
+        sampled_data = zip(*sampled_data)
+        if self.to_np:
+            sampled_data = list(map(lambda x: np.asarray(x), sampled_data))
+        return sampled_data
+
+    def sample_balanced(self, batch_size=None):
+        if self.empty():
+            return None
+        if batch_size is None:
+            batch_size = self.batch_size
+        pos_size = batch_size // 2
+        if len(self.pos_data) >= pos_size:
+            pos_bs = pos_size
+        else:
+            pos_bs = len(self.pos_data)
+        neg_bs = batch_size - pos_bs 
+
+        sampled_pos_indices = [np.random.randint(0, len(self.pos_data)) for _ in range(pos_bs)]
+        sampled_neg_indices = [np.random.randint(0, len(self.neg_data)) for _ in range(neg_bs)]
+        sampled_pos = [self.pos_data[ind] for ind in sampled_pos_indices]
+        sampled_neg = [self.neg_data[ind] for ind in sampled_neg_indices]
+        sampled_data = sampled_pos + sampled_neg
+        sampled_data = zip(*sampled_data)
+        if self.to_np:
+            sampled_data = list(map(lambda x: np.asarray(x), sampled_data))
+        return sampled_data
+
+    def size(self):
+        return len(self.data)
+
+    def empty(self):
+        return not len(self.data)
+
+    def shuffle(self):
+        np.random.shuffle(self.data)
+        np.random.shuffle(self.pos_data)
+        np.random.shuffle(self.neg_data)
+
+    def clear(self):
+        self.data = []
+        self.pos_data = []
+        self.neg_data = []
+        self.loc = 0
+        self.pos_loc = 0
+        self.neg_loc = 0
+
+
 class SkewedReplay:
     def __init__(self, memory_size, batch_size, criterion):
         self.replay1 = Replay(memory_size // 2, batch_size // 2)

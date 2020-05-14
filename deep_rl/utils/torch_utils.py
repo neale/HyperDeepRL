@@ -19,11 +19,17 @@ def select_device(gpu_id):
     print (Config.DEVICE)
 
 
-def tensor(x):
+def tensor(x, dtype=None):
     if isinstance(x, torch.Tensor):
-        return x
-    x = np.asarray(x, dtype=np.float)
-    x = torch.tensor(x, device=Config.DEVICE, dtype=torch.float32)
+        if dtype is None:
+            return x
+        else:
+            return torch.as_tensor(x, dtype=dtype, device=Config.DEVICE)
+    if issubclass(x.dtype.type, np.integer):
+        x = torch.as_tensor(x, device=Config.DEVICE)
+    else:
+        x = np.asarray(x, dtype=np.float)
+        x = torch.as_tensor(x, dtype=torch.float32, device=Config.DEVICE)
     return x
 
 

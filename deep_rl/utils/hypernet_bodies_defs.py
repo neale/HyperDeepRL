@@ -5,7 +5,8 @@ from collections import namedtuple
 # gen_config = namedtuple('layer', fields)
 # defaults = (100, 3, False, 64, 64, 'relu', None, 6) # python 3.7
 
-fields = ('d_output', 'd_input', 'd_hidden', 'kernel', 'bias', 's_dim', 'z_dim', 'act', 'act_out', 'n_gen')
+fields = ('d_output', 'd_input', 'd_hidden', 'kernel', 
+          'bias', 's_dim', 'z_dim', 'act', 'act_out', 'n_gen')
 defaults = (64, 3, False, 64, 64, 'relu', None, 4) # python 3.6
 
 nature_conv_body = namedtuple('nature_conv_body', ' '.join(fields))

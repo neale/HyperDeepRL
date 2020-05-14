@@ -80,6 +80,49 @@ class LinearGenerator(nn.Module):
             return x
         return w, b#.squeeze(1)
 
+class FlatLinearGenerator(nn.Module):
+    def __init__(self, config):
+        super(FlatLinearGenerator, self).__init__()
+        self.z = config.z_dim
+        self.bias = config.bias
+        try:
+            self.act = getattr(torch.nn.functional, config.act)
+        except:
+            self.act_out = linear
+        try:
+            self.act_out = getattr(torch.nn.functional, config.act_out)
+        except:
+            self.act_out = linear
+        self.d_output = config.d_output
+        self.d_input = config.d_input
+        self.d_hidden = config.d_hidden
+        
+        self.linear1 = nn.Linear(self.z, self.d_hidden, bias=self.bias)
+        self.linear2 = nn.Linear(self.d_hidden, self.d_output * self.d_input + self.d_output, bias=self.bias)
+    
+    def forward(self, z):
+        """ HyperModel Core
+        inputs:
+            z: Random sample used to generate weights [n_particles x noise_dim]
+            x (optional): data to evaluate generated model on. If provided, weights are thrown away after use
+            theta (optional): previously generated weights. if provided, no additional weights are generated
+        outputs: 
+            g(z)
+        """
+        z = self.act(self.linear1(z))
+        z = self.act_out(self.linear2(z))
+        return z
+
+
+    def evaluate(self, x, theta):
+        """ evaluates theta on x """
+        w, b = theta[:, :self.d_output*self.d_input], theta[:, -self.d_output:]    
+        w = w.view(-1, self.d_output, self.d_input)
+        b = b.view(-1, 1, self.d_output)
+        x = torch.baddbmm(b, x, w.transpose(1,2)) # fused op is faster than list-comp over F.linear
+        return x
+
+
 class ConvGenerator(nn.Module):
     def __init__(self, config):
         super(ConvGenerator, self).__init__()

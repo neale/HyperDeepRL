@@ -40,7 +40,8 @@ class Config:
         self.use_gae = False
         self.gae_tau = 1.0
         self.target_network_mix = 0.001
-        self.state_normalizer = RescaleNormalizer()
+        # self.state_normalizer = RescaleNormalizer()
+        self.state_normalizer = MeanStdNormalizer()
         self.reward_normalizer = RescaleNormalizer()
         self.min_memory_size = None
         self.max_steps = 0
@@ -65,6 +66,7 @@ class Config:
         self.tasks = False
         self.particles = 24
         self.hyper = False
+        self.mdp_train_steps = 50
 
     @property
     def eval_env(self):

@@ -2,7 +2,7 @@ import torch
 
 # returns a sampler which we can use to sample from a given prior dsitribution
 class NoiseSampler(object):
-    def __init__(self, dist_type, z_dim, particles=None, p1=None, p2=None):
+    def __init__(self, dist_type, z_dim, aux_scale=1e-6, particles=None, p1=None, p2=None):
         self.dist_type = dist_type
         self.z_dim = z_dim
         self.particles = particles
@@ -10,9 +10,9 @@ class NoiseSampler(object):
         self.p2 = p2
         self.aux_dist = None
         self.base_dist = None
-        self.set_base_sampler()
+        self.set_base_sampler(aux_scale)
 
-    def set_base_sampler(self):
+    def set_base_sampler(self, aux_scale=1e-6):
         if self.dist_type == 'uniform':
             high = torch.ones(self.z_dim)
             low = -1 * high
@@ -33,7 +33,7 @@ class NoiseSampler(object):
             k_classes = self.z_dim
             probs = torch.ones(k_classes)/float(k_classes)
             self.base_dist = torch.distributions.OneHotCategorical(probs=probs)
-            high = torch.ones(self.z_dim) * 1e-6
+            high = torch.ones(self.z_dim) * aux_scale
             low = torch.zeros(self.z_dim)
             #high = torch.ones(self.particles, self.z_dim) * .005
             #low = torch.zeros(self.particles, self.z_dim)
@@ -50,16 +50,18 @@ class NoiseSampler(object):
             cov = psd_mat
             self.base_dist = torch.distributions.MultivariateNormal(loc, cov)
 
-    def sample(self):
+    def sample(self, particles=None):
+        if particles is None:
+            particles = self.particles
         if self.aux_dist is not None:
             sample = self.base_dist.sample()
-            sample_aux = self.aux_dist.sample([self.particles])
-            sample = sample.unsqueeze(0).repeat(self.particles, 1)
+            sample_aux = self.aux_dist.sample([particles])
+            sample = sample.unsqueeze(0).repeat(particles, 1)
             sample += sample_aux
             sample = sample.clamp(min=0.0, max=1.0)
             # print (sample)
         else:
-            sample = self.base_dist.sample([self.particles])
+            sample = self.base_dist.sample([particles])
             sample = sample.clamp(min=0.0, max=1.0)
         return sample
 
