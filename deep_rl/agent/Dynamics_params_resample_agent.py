@@ -372,8 +372,8 @@ class Dynamics_Param_Resample_Agent(BaseAgent):
 
             # kappa: [p/2, p/2], grad_kappa: [p/2, p/2, batch, d_state]
             #mdp_theta_i, mdp_theta_j = torch.split(mdp_theta, config.particles//2, dim=0)
-            mdp_theta_j = mdp.theta_j.unsqueeze(1)
-            mdp_theta_i = mdp.theta_i.unsqueeze(1)
+            mdp_theta_j = mdp_theta_j.unsqueeze(1)
+            mdp_theta_i = mdp_theta_i.unsqueeze(1)
             kappa_mdp, grad_kappa_mdp = batch_rbf_mean(mdp_theta_j, mdp_theta_i)
             #kappa_mdp, grad_kappa_mdp = batch_rbf_xy(pred_states_j, pred_states_i)
 
