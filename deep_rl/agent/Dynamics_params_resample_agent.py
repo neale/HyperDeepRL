@@ -54,14 +54,14 @@ class DynamicsDQNActor(BaseActor):
             abs_max = q_values.max(2)[0].argmax()
             q_max = q_values[abs_max]
 
-        q_max = to_np(q_max).flatten()
+        #q_max = to_np(q_max).flatten()
         q_var = to_np(q_values.var(0))
         q_mean = to_np(q_values.mean(0))
         q_random = to_np(q_values[self.k])
 
         # random action for exploration and sampled q greedy action for rollout
         if self._total_steps < config.exploration_steps: 
-            action = np.random.randint(0, len(q_max))
+            action = np.random.randint(0, 3)
         else:
             action = np.argmax(q_random)  # Random Head Action
 
@@ -195,7 +195,7 @@ class Dynamics_Param_Resample_Agent(BaseAgent):
             states, actions, rewards, next_states, terminals = experiences
             states = self.config.state_normalizer(states)
             next_states = self.config.state_normalizer(next_states)
-            terminals = tensor(terminals)
+            terminals = tensor(terminals).float()
             sample_z = self.network.sample_model_seed(return_seed=True)
 
             # ## compute max actions for states
@@ -350,12 +350,10 @@ class Dynamics_Param_Resample_Agent(BaseAgent):
             
             reward_theta_j = reward_theta_j.unsqueeze(1)
             reward_theta_i = reward_theta_i.unsqueeze(1)
-            print ('theta reward shape', reward_theta_j.shape) 
             kappa_reward, grad_kappa_reward = batch_rbf_mean(reward_theta_j, reward_theta_i)
 
             # [particles/2, batch, 1]
             reward_grad = reward_grad.unsqueeze(1)   # [p/2, 1, theta]
-            print (kappa_reward.shape, reward_grad.shape)
             p_ref = kappa_reward.shape[0]
             kernel_reward_grad = torch.einsum('ij,ikl->jkl', kappa_reward, reward_grad) / p_ref
             svgd_reward = (kernel_reward_grad + alpha * grad_kappa_reward.mean(0))
