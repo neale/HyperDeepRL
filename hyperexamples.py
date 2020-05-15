@@ -145,7 +145,7 @@ def dqn_feature(**kwargs):
 
     # run_steps(DQN_Param_SVGD_Agent(config))
     if config.update == 'sgd':
-        run_steps(Dynamics_Param_Agent(config))
+        run_steps(Dynamics_Param_Resample_Agent(config))
     elif config.update == 'thompson':
         run_steps(DQN_Thompson_Agent(config))
 

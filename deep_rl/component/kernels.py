@@ -92,3 +92,28 @@ def batch_rbf_xy(x, y, h_min=1e-3):
     # ... x Kx x Ky x D
     return kappa, kappa_grad
 
+def batch_rbf_mean(x, y, h_min=1e-3):
+    """
+        x (tensor): A tensor of shape (Nx, B, D) containing Nx particles
+        y (tensor): A tensor of shape (Ny, B, D) containing Ny particles
+        h_min(`float`): Minimum bandwidth.
+    """
+    Nx, Bx, Dx = x.shape 
+    Ny, By, Dy = y.shape
+    assert Bx == By
+    assert Dx == Dy
+
+    diff = x.unsqueeze(1) - y.unsqueeze(0) # Nx x Ny x B x D
+    dist_sq = torch.sum(diff**2, -1).mean(dim=-1) # Nx x Ny
+    values, _ = torch.topk(dist_sq.view(-1), k=dist_sq.nelement()//2+1)
+    median_sq = values[-1]
+    h = median_sq / np.log(Nx)
+    h = torch.max(h, torch.tensor([h_min]).cuda())
+
+    # Nx x Ny
+    kappa = torch.exp(-dist_sq / h)
+
+    # Nx x Ny x B x D
+    kappa_grad = torch.einsum('ij,ijkl->ijkl', kappa, -2 * diff / h)
+
+    return kappa, kappa_grad

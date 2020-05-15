@@ -3,3 +3,4 @@ from .DQN_param_agent import *
 from .DQN_thompson_agent import *
 from .Dynamics_DQN_agent import *
 from .Dynamics_params_agent import *
+from .Dynamics_params_resample_agent import *
