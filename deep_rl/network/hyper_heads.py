@@ -73,19 +73,14 @@ class DuelingHyperNet(nn.Module, BaseNet):
         else:
             self.model_seed = model_seed
 
-    def sweep_samples(self):
-        samples = []
-        s = self.noise_sampler.sweep_samples()
-        for batch in s:
-            batch = batch.to(Config.DEVICE)
-            batch = batch.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
-            model_seed = {
-                'features_z': batch,
-                'value_z': batch[0],
-                'advantage_z': batch[0],
-            }
-            samples.append(model_seed)
-        return samples
+    def sweep_samples(self, particles=None):
+        s = self.noise_sampler.sweep_samples(particles).to(Config.DEVICE)
+        s = s.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
+        return {
+                'features_z': s,
+                'value_z': s[0],
+                'advantage_z': s[0]
+                }
 
     def set_model_seed(self, seed):
         self.model_seed = seed
@@ -180,19 +175,15 @@ class MdpHyperNet(nn.Module, BaseNet):
         else:
             self.model_seed = model_seed
 
-    def sweep_samples(self):
-        samples = []
-        s = self.noise_sampler.sweep_samples()
-        for batch in s:
-            batch = batch.to(Config.DEVICE)
-            batch = batch.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
-            model_seed = {
-                'features_z': batch,
-                'mdp_z': batch[0],
-                'reward_z': batch[0],
-            }
-            samples.append(model_seed)
-        return samples
+    def sweep_samples(self, particles=None):
+        s = self.noise_sampler.sweep_samples(particles).to(Config.DEVICE)
+        s = s.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
+        return {
+                'features_z': s,
+                'value_z': s[0],
+                'advantage_z': s[0]
+                }
+
 
     def set_model_seed(self, seed):
         self.model_seed = seed
@@ -278,19 +269,14 @@ class FlatMdpHyperNet(nn.Module, BaseNet):
         else:
             self.model_seed = model_seed
 
-    def sweep_samples(self):
-        samples = []
-        s = self.noise_sampler.sweep_samples()
-        for batch in s:
-            batch = batch.to(Config.DEVICE)
-            batch = batch.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
-            model_seed = {
-                'features_z': batch,
-                'mdp_z': batch[0],
-                'reward_z': batch[0],
-            }
-            samples.append(model_seed)
-        return samples
+    def sweep_samples(self, particles=None):
+        s = self.noise_sampler.sweep_samples(particles).to(Config.DEVICE)
+        s = s.unsqueeze(0).repeat(self.features.config['n_gen'], 1, 1)
+        return {
+                'features_z': s,
+                'value_z': s[0],
+                'advantage_z': s[0]
+                }
 
     def set_model_seed(self, seed):
         self.model_seed = seed

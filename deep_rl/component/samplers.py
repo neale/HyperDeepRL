@@ -65,3 +65,15 @@ class NoiseSampler(object):
             sample = sample.clamp(min=0.0, max=1.0)
         return sample
 
+    def sweep_samples(self, particles=None):
+        if particles is None:
+            particles = self.particles
+        if self.aux_dist is not None:  # categorical or softmax
+            samples = torch.eye(particles)
+            sample_aux = self.aux_dist.sample([particles])
+            samples += sample_aux
+            samples = samples.clamp(min=0.0, max=1.0)
+        else:
+            samples = self.sample(particles)
+        return samples
+

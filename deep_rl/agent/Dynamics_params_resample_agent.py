@@ -55,9 +55,12 @@ class DynamicsDQNActor(BaseActor):
             q_max = q_values[abs_max]
 
         #q_max = to_np(q_max).flatten()
-        q_var = to_np(q_values.var(0))
-        q_mean = to_np(q_values.mean(0))
+        q_var = q_values.var(0)
+        q_mean = q_values.mean(0)
         q_random = to_np(q_values[self.k])
+
+        posterior_z = self._network.sweep_samples()
+        posterior_q = self._network(state, seed=posterior_z)
 
         # random action for exploration and sampled q greedy action for rollout
         if self._total_steps < config.exploration_steps: 
@@ -80,6 +83,7 @@ class DynamicsDQNActor(BaseActor):
         # Add Q value estimates to info
         info[0]['q_mean'] = q_mean.mean()
         info[0]['q_var'] = q_var.mean()
+        info[0]['p_var'] = posterior_q.var(0).mean()
 
         entry = [self._state[0], action, reward[0], 
             next_state[0], int(done[0]), info]
