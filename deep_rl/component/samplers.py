@@ -50,10 +50,17 @@ class NoiseSampler(object):
             cov = psd_mat
             self.base_dist = torch.distributions.MultivariateNormal(loc, cov)
 
-    def sample(self):
+    def sample(self, aux_noise=None):
         if self.aux_dist is not None:
+            if aux_noise is not 1e-6:
+                high = torch.ones(self.z_dim) * aux_noise
+                low = torch.zeros(self.z_dim)
+                aux_dist = torch.distributions.Uniform(low, high)
+            else:
+                aux_dist = self.aux_fist
+
             sample = self.base_dist.sample()
-            sample_aux = self.aux_dist.sample([self.particles])
+            sample_aux = aux_dist.sample([self.particles])
             sample = sample.unsqueeze(0).repeat(self.particles, 1)
             sample += sample_aux
             sample = sample.clamp(min=0.0, max=1.0)
@@ -63,3 +70,12 @@ class NoiseSampler(object):
             sample = sample.clamp(min=0.0, max=1.0)
         return sample
 
+    def sweep_samples(self):
+        if self.aux_dist is not None:
+            sample = torch.eye(self.z_dim)
+            sample_aux = self.aux_dist.sample([self.z_dim])
+            sample += sample_aux
+            sample = sample.clamp(min=0.0, max=1.0)
+        else:
+            sample = self.sample()
+        return sample

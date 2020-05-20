@@ -22,7 +22,6 @@ class DQNSGDActor(BaseActor):
         self.config = config
         self.start()
         self.k = np.random.choice(config.particles, 1)[0]
-        self.episode_steps = 0
 
     def _transition(self):
         if self._state is None:
@@ -33,50 +32,39 @@ class DQNSGDActor(BaseActor):
             q_values = self._network(state)
             particle_max = q_values.argmax(-1)
             abs_max = q_values.max(2)[0].argmax()
-            q_max = q_values[abs_max]
-            
-        q_max = to_np(q_max).flatten()
-        q_var = to_np(q_values.var(0))
-        q_mean = to_np(q_values.mean(0))
-        q_random = to_np(q_values[self.k])
         
-        q_prob = q_values.max(0)[0]
-        q_prob = q_prob + q_prob.min().abs() + 1e-8 # to avoid negative or 0 probability of taking an action
+        q_var = q_values.var(0)
+        q_mean = q_values.mean(0)
+        q_random = to_np(q_values[self.k])
 
-        if self._total_steps < config.exploration_steps \
-                or np.random.rand() < config.random_action_prob():
-                action = np.random.randint(0, len(q_max))
-                actions_log = np.random.randint(0, len(q_max), size=(config.particles, 1))
+        posterior_z = self._network.sweep_samples()
+        posterior_q = self._network(state, seed=posterior_z)
+
+        if np.random.rand() < config.random_action_prob():
+            action = np.random.randint(0, 3)
+            actions_log = np.random.randint(-2, -1, size=(config.particles, 1))
         else:
-            # action = np.argmax(q_max)  # Max Action
-            action = np.argmax(q_mean)  # Mean Action
+            action = torch.argmax(q_mean).item()  # Mean Action
             #action = np.argmax(q_random)  # Random Head Action
-            # action = torch.multinomial(q_prob.cpu(), 1, replacement=True).numpy()[0] # Sampled Action
             actions_log = to_np(particle_max)
         
         next_state, reward, done, info = self._task.step([action])
         if config.render and self._task.record_now:
             self._task.render()
         if done:
-            self.episode_steps = 0
             self._network.sample_model_seed()
+            self.k = np.random.choice(config.particles, 1)[0]
             if self._task.record:
                 self._task.record_or_not(info)
-                self.k = np.random.choice(config.particles, 1)[0]
         
         # Add Q value estimates to info
         info[0]['q_mean'] = q_mean.mean()
         info[0]['q_var'] = q_var.mean()
+        info[0]['p_var'] = posterior_q.var(0).mean()
 
-        #if np.random.rand() < config.log_random_action_prob:
-        #    action = np.random.randint(0, len(q_max))
-        #softmax_prob = torch.nn.functional.softmax(q_values.mean(0), dim=-1)
-        #softmax_prob_np = softmax_prob.view(-1).detach().cpu().numpy()
-        #softmax_action = np.random.choice(3, 1, softmax_prob_np)
         entry = [self._state[0], action, actions_log, reward[0], next_state[0], int(done[0]), info]
         self._total_steps += 1
         self._state = next_state
-        self.episode_steps += 1
         return entry
 
 
@@ -151,7 +139,11 @@ class DQN_SGD_Agent(BaseAgent):
             next_states = self.config.state_normalizer(next_states)
             terminals = tensor(terminals)
             rewards = tensor(rewards)
-            sample_z = self.network.sample_model_seed(return_seed=True) 
+            if np.random.rand() < config.aux_noise_prob():
+                noise = 1e-1
+            else:
+                noise = 1e-6
+            sample_z = self.network.sample_model_seed(return_seed=True, aux_noise=noise) 
             ## Get target q values
             q_next = self.target_network(next_states, seed=sample_z).detach()  # [particles, batch, action]
             if self.config.double_q:
@@ -166,7 +158,14 @@ class DQN_SGD_Agent(BaseAgent):
 
             actions = tensor(actions).long()
             max_actions = tensor(max_actions).long()
-            
+
+            if self.config.max_rand:
+                n_rand = int(len(actions) * config.max_random_action_prob())
+                rand_idx = np.random.randint(len(actions), size=(n_rand))
+                for idx in rand_idx:
+                    max_actions[idx] = torch.randint(0, 3, size=max_actions[idx].shape).long()
+                max_actions = max_actions.long()
+
             ## Get main Q values
             phi = self.network.body(states, seed=sample_z)
             q = self.network.head(phi, seed=sample_z) # [particles, batch, action]
