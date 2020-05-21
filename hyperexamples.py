@@ -98,8 +98,8 @@ def dqn_feature(**kwargs):
     config.replay_fn = lambda: Replay(memory_size=config.replay_size, batch_size=config.replay_bs)
     # config.replay_fn = lambda: AsyncReplay(memory_size=config.replay_size, batch_size=config.replay_bs)
     config.render = True  # Render environment at every train step
-    config.random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
-    config.max_random_action_prob = LinearSchedule(0, 0, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
+    config.random_action_prob = LinearSchedule(0, 0, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
+    config.max_random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
     config.aux_noise_prob = LinearSchedule(1e-1, 1e-7, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
     #config.log_random_action_prob = 0.05
     config.discount = 0.99  # horizon
@@ -117,6 +117,7 @@ def dqn_feature(**kwargs):
     config.svgd_q = 'sample'
     config.update = 'sgd'
     config.max_rand = True
+    config.aux_rand = False
 
     #run_steps(DQN_Param_SVGD_Agent(config))
     if config.update == 'sgd':
@@ -133,7 +134,7 @@ if __name__ == '__main__':
     # select_device(-1)
     select_device(0)
 
-    tag = 'test_new_pvar/replace_max_action_idx_nogreedy2'
+    tag = 'verify_rand_randexp/trial1'
     game = 'bsuite-cartpole_swingup/0'
     sweep(game, tag, dqn_feature, manual=True, trials=50)
 

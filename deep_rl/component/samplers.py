@@ -54,7 +54,7 @@ class NoiseSampler(object):
         if self.aux_dist is not None:
             if aux_noise is not 1e-6:
                 high = torch.ones(self.z_dim) * aux_noise
-                low = torch.zeros(self.z_dim)
+                low = torch.ones(self.z_dim) * -aux_noise
                 aux_dist = torch.distributions.Uniform(low, high)
             else:
                 aux_dist = self.aux_fist
@@ -63,7 +63,7 @@ class NoiseSampler(object):
             sample_aux = aux_dist.sample([self.particles])
             sample = sample.unsqueeze(0).repeat(self.particles, 1)
             sample += sample_aux
-            sample = sample.clamp(min=0.0, max=1.0)
+            # sample = sample.clamp(min=0.0, max=1.0)
             # print (sample)
         else:
             sample = self.base_dist.sample([self.particles])

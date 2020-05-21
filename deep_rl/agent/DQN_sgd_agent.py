@@ -35,7 +35,7 @@ class DQNSGDActor(BaseActor):
         
         q_var = q_values.var(0)
         q_mean = q_values.mean(0)
-        q_random = to_np(q_values[self.k])
+        q_random = q_values[self.k]
 
         posterior_z = self._network.sweep_samples()
         posterior_q = self._network(state, seed=posterior_z)
@@ -45,7 +45,7 @@ class DQNSGDActor(BaseActor):
             actions_log = np.random.randint(-2, -1, size=(config.particles, 1))
         else:
             action = torch.argmax(q_mean).item()  # Mean Action
-            #action = np.argmax(q_random)  # Random Head Action
+            action = torch.argmax(q_random).item()  # Random Head Action
             actions_log = to_np(particle_max)
         
         next_state, reward, done, info = self._task.step([action])
@@ -139,10 +139,14 @@ class DQN_SGD_Agent(BaseAgent):
             next_states = self.config.state_normalizer(next_states)
             terminals = tensor(terminals)
             rewards = tensor(rewards)
-            if np.random.rand() < config.aux_noise_prob():
-                noise = 1e-1
+            if config.aux_rand:
+                if np.random.rand() < config.aux_noise_prob():
+                    noise = 5.0
+                else:
+                    noise = 1e-6
             else:
-                noise = 1e-6
+                noise=1e-6
+
             sample_z = self.network.sample_model_seed(return_seed=True, aux_noise=noise) 
             ## Get target q values
             q_next = self.target_network(next_states, seed=sample_z).detach()  # [particles, batch, action]
