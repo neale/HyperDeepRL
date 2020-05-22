@@ -44,7 +44,7 @@ class DQNSGDActor(BaseActor):
             action = np.random.randint(0, 3)
             actions_log = np.random.randint(-2, -1, size=(config.particles, 1))
         else:
-            action = torch.argmax(q_mean).item()  # Mean Action
+            #action = torch.argmax(q_mean).item()  # Mean Action
             action = torch.argmax(q_random).item()  # Random Head Action
             actions_log = to_np(particle_max)
         
@@ -162,12 +162,12 @@ class DQN_SGD_Agent(BaseAgent):
 
             actions = tensor(actions).long()
             max_actions = tensor(max_actions).long()
-
             if self.config.max_rand:
                 n_rand = int(len(actions) * config.max_random_action_prob())
                 rand_idx = np.random.randint(len(actions), size=(n_rand))
                 for idx in rand_idx:
                     max_actions[idx] = torch.randint(0, 3, size=max_actions[idx].shape).long()
+                    rewards[idx] = torch.ones_like(rewards[idx]*-.1)
                 max_actions = max_actions.long()
 
             ## Get main Q values
@@ -215,7 +215,6 @@ class DQN_SGD_Agent(BaseAgent):
                 td_loss_j = action_loss_j# + moment1_loss_j + moment2_loss_j
 
             q_grad = autograd.grad(td_loss_j.sum(), inputs=svgd_qj)[0]  # fix for ij
-            #q_grad = autograd.grad(td_loss.sum(), inputs=svgd_q)[0]
             q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]
             
             qi_eps = svgd_qi + torch.rand_like(svgd_qi) * 1e-8
@@ -223,7 +222,11 @@ class DQN_SGD_Agent(BaseAgent):
 
             kappa, grad_kappa = batch_rbf_xy(qj_eps, qi_eps) 
             kappa = kappa.unsqueeze(-1)
-            
+           
+            #p_ref = kappa.shape[0]
+            #kernel_logp = torch.einsum('ij, ikl->jkl', kappa, q_grad) / p_ref
+            #svgd = (kernel_logp + alpha * grad_kappa.mean(0)) # [n, theta]
+
             kernel_logp = torch.matmul(kappa.detach(), q_grad) # [n, 1]
             svgd = (kernel_logp + alpha * grad_kappa).mean(1) # [n, theta]
             

@@ -37,7 +37,7 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
             'game': game,
             'tb_tag': tag,
             'alpha_i': 10,
-            'alpha_f': 0.1,
+            'alpha_f': 2,
             'anneal': 500e3,
             'lr': 1e-4,
             'freq': 100,
@@ -45,7 +45,7 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
             'hidden': 256,
             'replay_size': int(1e5),
             'replay_bs': 128,
-            'dist': 'softmax'
+            'dist': 'dirichlet'
         }
         print ('Running Config: ')
         for (k, v) in setting.items():
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     # select_device(-1)
     select_device(0)
 
-    tag = 'verify_rand_randexp/trial1'
+    tag = 'dirichlet/rand_action_set_dirichlet_c1e-3_aux0_a2'
     game = 'bsuite-cartpole_swingup/0'
     sweep(game, tag, dqn_feature, manual=True, trials=50)
 
