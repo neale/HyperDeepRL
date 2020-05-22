@@ -37,7 +37,7 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
             'game': game,
             'tb_tag': tag,
             'alpha_i': 10,
-            'alpha_f': 2,
+            'alpha_f': 10,
             'anneal': 500e3,
             'lr': 1e-4,
             'freq': 100,
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     # select_device(-1)
     select_device(0)
 
-    tag = 'dirichlet/rand_action_set_dirichlet_c1e-3_aux0_a2'
+    tag = 'dirichlet/rand_action_set_dirichlet_c1e-3_a10kfix2'
     game = 'bsuite-cartpole_swingup/0'
     sweep(game, tag, dqn_feature, manual=True, trials=50)
 

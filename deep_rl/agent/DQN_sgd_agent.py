@@ -215,20 +215,21 @@ class DQN_SGD_Agent(BaseAgent):
                 td_loss_j = action_loss_j# + moment1_loss_j + moment2_loss_j
 
             q_grad = autograd.grad(td_loss_j.sum(), inputs=svgd_qj)[0]  # fix for ij
-            q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]
+            #q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]
             
             qi_eps = svgd_qi + torch.rand_like(svgd_qi) * 1e-8
             qj_eps = svgd_qj + torch.rand_like(svgd_qj) * 1e-8
 
-            kappa, grad_kappa = batch_rbf_xy(qj_eps, qi_eps) 
-            kappa = kappa.unsqueeze(-1)
+            kappa, grad_kappa = batch_rbf(qj_eps, qi_eps) 
+            #kappa, grad_kappa = batch_rbf_xy(qj_eps, qi_eps) 
+            #kappa = kappa.unsqueeze(-1)
            
-            #p_ref = kappa.shape[0]
-            #kernel_logp = torch.einsum('ij, ikl->jkl', kappa, q_grad) / p_ref
-            #svgd = (kernel_logp + alpha * grad_kappa.mean(0)) # [n, theta]
+            p_ref = kappa.shape[0]
+            kernel_logp = torch.einsum('ij, ikl->jkl', kappa, q_grad) / p_ref
+            svgd = (kernel_logp + alpha * grad_kappa.mean(0)) # [n, theta]
 
-            kernel_logp = torch.matmul(kappa.detach(), q_grad) # [n, 1]
-            svgd = (kernel_logp + alpha * grad_kappa).mean(1) # [n, theta]
+            #kernel_logp = torch.matmul(kappa.detach(), q_grad) # [n, 1]
+            #svgd = (kernel_logp + alpha * grad_kappa).mean(1) # [n, theta]
             
             self.optimizer.zero_grad()
             autograd.backward(svgd_qi, grad_tensors=svgd.detach())
