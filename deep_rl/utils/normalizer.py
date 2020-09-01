@@ -5,7 +5,7 @@
 #######################################################################
 import numpy as np
 import torch
-from baselines.common.running_mean_std import RunningMeanStd
+# from baselines.common.running_mean_std import RunningMeanStd
 
 
 class BaseNormalizer:
@@ -24,7 +24,7 @@ class BaseNormalizer:
     def load_state_dict(self, _):
         return
 
-
+"""
 class MeanStdNormalizer(BaseNormalizer):
     def __init__(self, read_only=False, clip=10.0, epsilon=1e-8):
         BaseNormalizer.__init__(self, read_only)
@@ -49,7 +49,7 @@ class MeanStdNormalizer(BaseNormalizer):
     def load_state_dict(self, saved):
         self.rms.mean = saved['mean']
         self.rms.var = saved['var']
-
+"""
 class RescaleNormalizer(BaseNormalizer):
     def __init__(self, coef=1.0):
         BaseNormalizer.__init__(self)
@@ -69,3 +69,4 @@ class ImageNormalizer(RescaleNormalizer):
 class SignNormalizer(BaseNormalizer):
     def __call__(self, x):
         return np.sign(x)
+

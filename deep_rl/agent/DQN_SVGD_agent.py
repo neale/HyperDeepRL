@@ -16,7 +16,7 @@ import torch.autograd as autograd
 import sys
 from tqdm import tqdm
 
-class DQNSGDActor(BaseActor):
+class DQNSVGDActor(BaseActor):
     def __init__(self, config):
         BaseActor.__init__(self, config)
         self.config = config
@@ -49,8 +49,6 @@ class DQNSGDActor(BaseActor):
             actions_log = to_np(particle_max)
         
         next_state, reward, done, info = self._task.step([action])
-        if config.render and self._task.record_now:
-            self._task.render()
         if done:
             self._network.sample_model_seed()
             self.k = np.random.choice(config.particles, 1)[0]
@@ -68,7 +66,7 @@ class DQNSGDActor(BaseActor):
         return entry
 
 
-class DQN_SGD_Agent(BaseAgent):
+class DQN_SVGD_Agent(BaseAgent):
     def __init__(self, config):
         BaseAgent.__init__(self, config)
         self.config = config
@@ -76,7 +74,7 @@ class DQN_SGD_Agent(BaseAgent):
         config.lock = mp.Lock()
 
         self.replay = config.replay_fn()
-        self.actor = DQNSGDActor(config)
+        self.actor = DQNSVGDActor(config)
 
         self.network = config.network_fn()
         self.network.share_memory()
@@ -139,11 +137,8 @@ class DQN_SGD_Agent(BaseAgent):
             next_states = self.config.state_normalizer(next_states)
             terminals = tensor(terminals)
             rewards = tensor(rewards)
-            if np.random.rand() < config.aux_noise_prob():
-                noise = 1e-1
-            else:
-                noise = 1e-6
-            sample_z = self.network.sample_model_seed(return_seed=True, aux_noise=noise) 
+            
+            sample_z = self.network.sample_model_seed(return_seed=True, aux_noise=1e-6) 
             ## Get target q values
             q_next = self.target_network(next_states, seed=sample_z).detach()  # [particles, batch, action]
             if self.config.double_q:
@@ -173,58 +168,47 @@ class DQN_SGD_Agent(BaseAgent):
             max_actions = max_actions.transpose(0, 1).squeeze(-1)  # [particles, batch, actions]
 
             ## define q values with respect to all max actions (q), or the action taken (q_a)
-            q_a = torch.gather(q, dim=2, index=actions.unsqueeze(0).unsqueeze(-1).repeat(config.particles, 1, 1)) # :/
-            q = torch.stack([q[i, self.batch_indices, max_actions[i]] for i in range(config.particles)]) # [particles, batch]
+            a_index = actions.unsqueeze(0).unsqueeze(-1).repeat(config.particles, 1, 1) # :/
+            q_a = torch.gather(q, dim=2, index=a_index)
+            max_index = [q[i, self.batch_indices, max_actions[i]] for i in range(config.particles)] # [particles, batch]
+            q = torch.stack(max_index)
 
             alpha = self.alpha_schedule.value(self.total_steps)
-            q = q.transpose(0, 1).unsqueeze(-1) # [particles, batch, 1]
-            q_a = q_a.transpose(0, 1) # [particles, batch, 1]
-            q_next = q_next.transpose(0, 1).unsqueeze(-1)  # [particles, batch, 1]
+            q = q.unsqueeze(-1) # [particles, batch, 1]
+            q_next = q_next.unsqueeze(-1)  # [particles, batch, 1]
             
-            q, q_frozen = torch.split(q, self.config.particles//2, dim=1)  # [batch, particles//2, 1]
-            q_a, q_a_frozen = torch.split(q_a, self.config.particles//2, dim=1)  # [batch, particles//2, 1]
-            q_next, q_next_frozen = torch.split(q_next, self.config.particles//2, dim=1) # [batch, particles/2, 1]
+            qi, qj = torch.split(q, self.config.particles//2, dim=0)  # [batch, particles//2, 1]
+            qi_next, qj_next = torch.split(q_next, self.config.particles//2, dim=0) # [batch, particles/2, 1]
+            qi_actions, qj_actions = torch.split(q_a, self.config.particles//2, dim=0)  # [batch, particles//2, 1]
 
-            q_frozen.detach()
-            q_a_frozen.detach()
-            q_next_frozen.detach()
-            
             # Loss functions
-            moment1_loss_i = (q_next.mean(1) - q.mean(1)).pow(2).mul(.5).mean()
-            moment2_loss_i = (q_next.var(1) - q.var(1)).pow(2).mul(.5).mean()
-            action_loss_i = (q_next - q_a).pow(2).mul(0.5)
-            sample_loss_i = (q_next - q).pow(2).mul(0.5) 
-            
-            moment1_loss_j = (q_next.mean(1) - q_frozen.mean(1)).pow(2).mul(.5).mean()
-            moment2_loss_j = (q_next.var(1) - q_frozen.var(1)).pow(2).mul(.5).mean()
-            action_loss_j = (q_next - q_a_frozen).pow(2).mul(0.5)
-            sample_loss_j = (q_next - q_frozen).pow(2).mul(0.5) 
+            moment1_loss = (qj_next.mean(1) - qj.mean(1)).pow(2).mul(.5).mean()
+            moment2_loss = (qj_next.var(1) - qj.var(1)).pow(2).mul(.5).mean()
+            action_loss = (qj_next - qj_actions).pow(2).mul(0.5)
+            sample_loss = (qj_next - qj).pow(2).mul(0.5) 
 
             # choose which Q to learn with respect to
             if config.svgd_q == 'sample':
-                svgd_qi, svgd_qj = q, q_frozen
-                td_loss_i = sample_loss_i# + moment1_loss_i + moment1_loss_i
-                td_loss_j = sample_loss_j# + moment1_loss_j + moment1_loss_j
+                qi, qj = qi, qj
+                td_loss = sample_loss# + moment1_loss + moment1_loss
             elif config.svgd_q == 'action':
-                svgd_qi, svgd_qj = q_a, q_a_frozen
-                td_loss_i = action_loss_i# + moment1_loss_i + moment2_loss_i
-                td_loss_j = action_loss_j# + moment1_loss_j + moment2_loss_j
+                qi, qj = qi_actions, qj_actions
+                td_loss = action_loss# + moment1_loss + moment2_loss
 
-            q_grad = autograd.grad(td_loss_j.sum(), inputs=svgd_qj)[0]  # fix for ij
-            #q_grad = autograd.grad(td_loss.sum(), inputs=svgd_q)[0]
-            q_grad = q_grad.unsqueeze(2)  # [particles//2. batch, 1, 1]
+            q_grad = autograd.grad(td_loss.sum(), inputs=qj)[0]  # fix for j
+            q_grad = q_grad.unsqueeze(2)
             
-            qi_eps = svgd_qi + torch.rand_like(svgd_qi) * 1e-8
-            qj_eps = svgd_qj + torch.rand_like(svgd_qj) * 1e-8
-
-            kappa, grad_kappa = batch_rbf_xy(qj_eps, qi_eps) 
-            kappa = kappa.unsqueeze(-1)
+            qi_eps = qi + torch.rand_like(qi) * 1e-8
+            qj_eps = qj + torch.rand_like(qj) * 1e-8
+            kappa, grad_kappa = batch_rbf_old(qj_eps, qi_eps) 
             
-            kernel_logp = torch.matmul(kappa.detach(), q_grad) # [n, 1]
-            svgd = (kernel_logp + alpha * grad_kappa).mean(1) # [n, theta]
+            p_ref = kappa.shape[0]
+            #logp_grad = torch.einsum('ij, ijk -> jkl', kappa.unsqueeze(-1), q_grad) / p_ref # [n, 1]
+            logp_grad = torch.matmul(kappa, q_grad)# [n, 1]
+            grad_out = (logp_grad + alpha * grad_kappa).mean(1) / p_ref # [n, theta]
             
             self.optimizer.zero_grad()
-            autograd.backward(svgd_qi, grad_tensors=svgd.detach())
+            autograd.backward(qi, grad_tensors=grad_out.detach())
             
             for param in self.network.parameters():
                 if param.grad is not None:
@@ -235,7 +219,7 @@ class DQN_SGD_Agent(BaseAgent):
 
             with config.lock:
                 self.optimizer.step()
-            self.logger.add_scalar('td_loss', td_loss_i.mean(), self.total_steps)
+            self.logger.add_scalar('td_loss', td_loss.mean(), self.total_steps)
             self.logger.add_scalar('grad_kappa', grad_kappa.mean(), self.total_steps)
             self.logger.add_scalar('kappa', kappa.mean(), self.total_steps)
         

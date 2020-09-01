@@ -110,7 +110,6 @@ class CartFCHyperBody(nn.Module):
         return x
 
 
-
 class FCHyperBody(nn.Module):
     def __init__(self, state_dim, hidden_units=(64, 64), gate=F.relu):
         super(FCHyperBody, self).__init__()
@@ -120,7 +119,62 @@ class FCHyperBody(nn.Module):
         self.gate = gate
         self.feature_dim = dims[-1]
         n_layers = self.config['n_gen']
-        self.layers = nn.ModuleList([LinearGenerator(self.config['fc{}'.format(i+1)]).cuda() for i in range(n_layers)])
+        self.layers = nn.ModuleList(
+                [LinearGenerator(self.config['fc{}'.format(i+1)]).cuda() for i in range(n_layers)])
+
+    def generate_theta(self, seed):
+        params = []
+        for i, layer in enumerate(self.layers):
+            params.append(layer(seed[i]))
+        theta = torch.cat(params, -1)
+        self.theta = theta
+    
+    def get_theta(self, layer):
+        l1 = self.layers[0].d_output * self.layers[0].d_input + self.layers[0].d_output
+        l2 = self.layers[1].d_output * self.layers[1].d_input + self.layers[1].d_output
+
+        self.body_params_len = l1 + l2
+        if layer == 'body1':
+            theta = self.theta[:, :l1]
+        elif layer == 'body2':
+            theta = self.theta[:, l1:]
+        return theta
+
+    def forward(self, x=None, z=None, theta=False):
+        if x is None:
+            weights = []
+            for i, layer in enumerate(self.layers):
+                w, b = layer(z[i])
+                weights.append(w)
+                weights.append(b)
+            return weights
+        # x = x.unsqueeze(0).repeat(z.shape[1], 1, 1)
+        ones_mask = torch.ones(x.dim()).long().tolist()
+        x = x.unsqueeze(0).repeat(z.shape[1], *ones_mask)
+        if x.size(2) == 1:  # DM lab has incompatible sizing with gym
+            x = x.squeeze(2)
+        for i, layer in enumerate(self.layers):
+            if theta:
+                params = self.get_theta('body{}'.format(i+1))
+                x = self.gate(layer.evaluate(x, params))
+            else:
+                
+                x = self.gate(layer.evaluate(x, layer(z[i])))
+        return x
+
+
+class FCHyperBodyFx(nn.Module):
+    def __init__(self, state_dim, hidden_units=(64, 64), gate=F.relu):
+        super(FCHyperBodyFx, self).__init__()
+        self.mixer = False
+        dims = (state_dim,) + hidden_units
+        self.config = FCBody_config(state_dim, hidden_units, gate)
+        self.gate = gate
+        self.feature_dim = dims[-1]
+        n_layers = self.config['n_gen']
+        self.layers = nn.ModuleList([
+            LinearGeneratorFx(
+                self.config['fc{}'.format(i+1)]).cuda() for i in range(n_layers)])
 
     def forward(self, x=None, z=None, theta=None):
         if x is None:
@@ -141,48 +195,6 @@ class FCHyperBody(nn.Module):
             else:
                 x = self.gate(layer(z[i], x))
         return x
-
-
-class TwoLayerFCHyperBodyWithAction(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_units=(64, 64), gate=F.relu):
-        super(TwoLayerFCHyperBodyWithAction, self).__init__()
-        self.mixer = False
-        hidden_size1, hidden_size2 = hidden_units
-        self.config = TwoLayerFCBodyWithAction_config(state_dim, action_dim, hidden_units, gate)
-        self.fc1 = LinearGenerator(self.config['fc1']).cuda()
-        self.fc2 = LinearGenerator(self.config['fc2']).cuda()
-        self.gate = gate
-        self.feature_dim = hidden_size2
-
-    def forward(self, x=None, action=None, z=None):
-        if x is None:
-            w1, b1 = self.fc1(z[0])
-            w2, b2 = self.fc2(z[1])
-            return [w1, b1, w2, b2]
-        x = x.unsqueeze(0).repeat(particles, 1, 1)
-        x = self.gate(self.fc1(z[0], x))
-        if x.dim() != action.dim():
-            action = action.unsqueeze(0).repeat(particles, 1, 1)
-        phi = self.gate(self.fc2(z[1], torch.cat([x, action], dim=2)))
-        return phi
-
-
-class OneLayerFCHyperBodyWithAction(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_units, gate=F.relu):
-        super(OneLayerFCHyperBodyWithAction, self).__init__()
-        self.mixer = False
-        self.config = OneLayerFCBodyWithAction_config(state_dim, action_dim, hidden_units, gate, self.mixer)
-        self.fc_s = LinearGenerator(self.config['fc_s'])
-        self.fc_a = LinearGenerator(self.config['fc_a'])
-        self.gate = gate
-        self.feature_dim = hidden_units * 2
-
-    def forward(self, x=None, action=None, z=None):
-        if x is None:
-            return (self.fc_s(z[0]), self.fc_a(z[1]))
-        x = x.unsqueeze(0).repeat(particles, 1, 1)
-        phi = self.gate(torch.cat([self.fc_s(z[0], x), self.fc_a(z[1], action)], dim=1))
-        return phi
 
 
 class DummyHyperBody(nn.Module):

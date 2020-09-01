@@ -53,6 +53,54 @@ class LinearGenerator(nn.Module):
         self.d_input = config.d_input
         self.d_hidden = config.d_hidden
         
+        self.linear1 = nn.Linear(self.z, self.d_hidden, bias=True)
+        self.linear2 = nn.Linear(
+                self.d_hidden,
+                self.d_output * self.d_input + self.d_output,
+                bias=True)
+   
+    def evaluate(self, x, theta):
+        """ Evaluates a state batch with generated theta
+            inputs:
+                x (torch.tensor): data to evaluate generated model on.
+                theta (torch.tensor): previously generated weights. 
+            outputs:
+                f(x ; theta) 
+        """
+        w, b = theta[:, :self.d_output*self.d_input], theta[:, -self.d_output:]
+        w = w.view(-1, self.d_output, self.d_input)
+        b = b.view(-1, 1, self.d_output)
+        x = torch.baddbmm(b, x, w.transpose(1,2)) # fused op is faster than list-comp over F.linear
+        return x
+
+    def forward(self, z):
+        """ HyperModel Core
+        inputs:
+            z: Random sample used to generate weights [n_particles x noise_dim]
+        outputs:
+            theta = g(z)
+        """
+        z = self.act(self.linear1(z))
+        theta = self.act_out(self.linear2(z))
+        return theta
+
+class LinearGeneratorFx(nn.Module):
+    def __init__(self, config):
+        super(LinearGeneratorFx, self).__init__()
+        self.z = config.z_dim
+        self.bias = config.bias
+        try:
+            self.act = getattr(torch.nn.functional, config.act)
+        except:
+            self.act_out = linear
+        try:
+            self.act_out = getattr(torch.nn.functional, config.act_out)
+        except:
+            self.act_out = linear
+        self.d_output = config.d_output
+        self.d_input = config.d_input
+        self.d_hidden = config.d_hidden
+        
         self.linear1 = nn.Linear(self.z, self.d_hidden, bias=self.bias)
         self.linear2 = nn.Linear(self.d_hidden, self.d_output * self.d_input, bias=self.bias)
     
@@ -78,7 +126,7 @@ class LinearGenerator(nn.Module):
         if x is not None:
             x = torch.baddbmm(b, x, w.transpose(1,2)) # fused op is faster than list-comp over F.linear
             return x
-        return w, b#.squeeze(1)
+        return w, b
 
 class ConvGenerator(nn.Module):
     def __init__(self, config):
