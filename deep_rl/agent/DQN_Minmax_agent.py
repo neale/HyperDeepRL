@@ -33,12 +33,11 @@ class DQNMinmaxActor(BaseActor):
             q_values = self._network(state)
             particle_max = q_values.argmax(-1)
 
-            posterior_z = self._network.sample_model_seed(sweep=True, aux_noise=1e-6)
+            posterior_z = self._network.sample_model_seed(sweep=True, aux_noise=0)
             posterior_q = self._network.forward_with_seed_or_theta(state, seed=posterior_z)
         
         q_var = q_values.var(0)
         q_mean = q_values.mean(0)
-
 
         if np.random.rand() < config.random_action_prob():
             action = np.random.randint(0, 2)
@@ -53,6 +52,7 @@ class DQNMinmaxActor(BaseActor):
         if done:
             self._network.sample_model_seed()
             self.k = np.random.choice(self.config.particles, 1)[0]
+            print ('K: ', self.k)
             if self._task.record:
                 self._task.record_or_not(info)
         
@@ -94,7 +94,6 @@ class DQN_Minmax_Agent(BaseAgent):
         self.target_network = config.network_fn()
         self.target_network.load_state_dict(self.network.state_dict())
         self.critic = self.network.critic
-        print (self.critic)
         self.optimizer = config.optimizer_fn(self.network.parameters())
         self.critic_optimizer = config.optimizer_critic_fn(self.critic.parameters())
 
@@ -112,6 +111,7 @@ class DQN_Minmax_Agent(BaseAgent):
         self.head = np.random.choice(config.particles, 1)[0]
         self.save_net_arch_to_file()
         print (self.network)
+        print (self.critic)
 
 
     def save_net_arch_to_file(self):
@@ -191,7 +191,7 @@ class DQN_Minmax_Agent(BaseAgent):
             rewards = tensor(rewards)
             
             # resample 
-            z = self.network.sample_model_seed(return_seed=True, aux_noise=1e-6) 
+            z = self.network.sample_model_seed(return_seed=True, aux_noise=0) 
             theta = self.network.generate_theta(z, store=False)
             theta_target = self.target_network.generate_theta(z, store=False)
 
@@ -215,6 +215,8 @@ class DQN_Minmax_Agent(BaseAgent):
                 self.optimizer.step()
             
             ## Get target q values
+            self.network.configure_critic()
+            self.critic = self.network.critic
             for iter in range(config.critic_training_iters):
                 theta = self.network.generate_theta(z, store=False)
                 theta_target = self.target_network.generate_theta(z, store=False)

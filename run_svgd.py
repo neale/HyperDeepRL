@@ -7,6 +7,7 @@
 from deep_rl import *
 import itertools
 import pprint
+import envs
 
 def product_dict(kwargs):
     keys = kwargs.keys()
@@ -14,7 +15,7 @@ def product_dict(kwargs):
     for instance in itertools.product(*vals):
         yield dict(zip(keys, instance))
 
-def sweep(game, tag, model_fn, trials=50, manual=True):
+def sweep(game, tag, model_fn, trials=50, manual=True, chain_len=4):
     hyperparams = {
         'alpha_i': [1, 10, 100],
         'alpha_f': [.1, 0.01],
@@ -37,10 +38,9 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
             'game': game,
             'tb_tag': tag,
             'alpha_i': 10,
-            'alpha_f': 0.1,
-            'anneal': 500e3,
-            'lr': 1e-4,
-            'freq': 100,
+            'alpha_f': 0.0,
+            'lr': 1e-3,
+            'freq': 10,
             'grad_clip': None,
             'hidden': 256,
             'replay_size': int(1e5),
@@ -48,6 +48,7 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
             'dist': 'softmax'
         }
         print ('Running Config: ')
+        setting['chain_len'] = chain_len
         for (k, v) in setting.items():
             print ('{} : {}'.format(k, v))
         model_fn(**setting)
@@ -69,6 +70,7 @@ def sweep(game, tag, model_fn, trials=50, manual=True):
                 setting['dist'],
                 setting['replay_bs'])
 
+        setting['chain_len'] = chain_len
         setting['tb_tag'] = tag+tag_append
         print ('=========================================================')
         print ('Search Space Contains {} Trials, Running [{}/{}] ---- ({}%)'.format(
@@ -86,49 +88,55 @@ def dqn_feature(**kwargs):
     config.hyper = True
     config.tag = config.tb_tag
     config.generate_log_handles()
-    config.particles = 32
-    config.task_fn = lambda: Task(config.game,
-            video=False,
-            gif=False,
-            log_dir=config.tf_log_handle)
+    config.particles = 24
+    config.task_fn = lambda: Task(
+        config.game,
+        video=False,
+        gif=False,
+        log_dir=config.tf_log_handle,
+        special_args=('NChain', config.chain_len))
 
     config.eval_env = config.task_fn()
 
     config.optimizer_fn = lambda params: torch.optim.Adam(params, config.lr)
     
-    config.network_fn = lambda: DuelingHyperNetFx(
-            config.action_dim,
-            FCHyperBodyFx(
-                config.state_dim,
-                hidden_units=(config.hidden, config.hidden)),
-            hidden=config.hidden,
-            dist=config.dist,
-            particles=config.particles)
+    config.network_fn = lambda: DuelingHyperHead(
+        config.action_dim,
+        FCBody(
+            config.state_dim,
+            hidden_units=(config.hidden, config.hidden)),
+        hidden=config.hidden,
+        dist=config.dist,
+        particles=config.particles,
+        critic_hidden=1)
+
+    config.prior_fn = lambda: DuelingNet(
+        config.action_dim,
+        FCBody(
+            config.state_dim,
+            hidden_units=(config.hidden, config.hidden)))
     
     config.replay_fn = lambda: Replay(
             memory_size=config.replay_size,
             batch_size=config.replay_bs)
 
-    # config.replay_fn = lambda: AsyncReplay(memory_size=config.replay_size, batch_size=config.replay_bs)
+    config.prior_scale = 0.
     config.render = True  # Render environment at every train step
-    config.random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
-    config.max_random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)  # eps greedy params
-    # config.log_random_action_prob = 0.05
+    config.random_action_prob = LinearSchedule(0., 0., 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
     config.discount = 0.99  # horizon
     config.target_network_update_freq = config.freq  # hard update to target network
     config.exploration_steps = config.replay_bs  # random actions taken at the beginning to fill the replay buffer
     config.double_q = True  # use double q update
     config.sgd_update_frequency = 1  # how often to do learning
     config.gradient_clip = config.grad_clip  # max gradient norm
-    config.eval_interval = int(5e3) 
-    config.max_steps = 500e3
+    config.eval_interval = int(5e7) 
+    config.max_steps = 500 * (config.chain_len + 9)
     config.async_actor = False
-    config.alpha_anneal = config.anneal  # how long to anneal SVGD alpha from init to final
+    config.alpha_anneal = 500 * (config.chain_len + 9)  # how long to anneal SVGD alpha from init to final
     config.alpha_init = config.alpha_i  # SVGD alpha strating value
     config.alpha_final = config.alpha_f  # SVGD alpha end value
-    config.svgd_q = 'sample'
     config.update = 'sgd'
-    config.max_rand = True
+    config.use_pushforward = False
 
     if config.update == 'sgd':
         run_steps(DQN_SVGD_Agent(config))
@@ -145,6 +153,9 @@ if __name__ == '__main__':
     select_device(0)
 
     tag = 'test_new'
-    game = 'bsuite-cartpole_swingup/0'
-    sweep(game, tag, dqn_feature, manual=True, trials=50)
+    game = 'NChain-v3'
+    for i in range(30, 50, 2):
+        tag = '-'.format(i)
+        #tag = 'test_svgd-chain-{}'.format(i)
+        sweep(game, tag, dqn_feature, manual=True, trials=50, chain_len=i)
 

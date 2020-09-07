@@ -167,7 +167,7 @@ class DuelingHyperNet(nn.Module, BaseNet):
         return action
 
 class DuelingHyperHead(nn.Module, BaseNet):
-    def __init__(self, action_dim, body, hidden, dist, particles):
+    def __init__(self, action_dim, body, hidden, dist, particles, critic_hidden):
         super(DuelingHyperHead, self).__init__()
         self.mixer = False
         
@@ -177,6 +177,7 @@ class DuelingHyperHead(nn.Module, BaseNet):
         self.fc_value = LinearGenerator(self.config['fc_value']).cuda()
         self.fc_advantage = LinearGenerator(self.config['fc_advantage']).cuda()
         self.features = body
+        self.critic_hidden = critic_hidden
         
         self.s_dim = self.config['s_dim']
         self.z_dim = self.config['z_dim']
@@ -190,10 +191,11 @@ class DuelingHyperHead(nn.Module, BaseNet):
     
     def configure_critic(self):
         input_dim = output_dim = self.generate_theta(store=False).shape[1]
-        self.critic = BasicCritic(input_dim, output_dim).to(Config.DEVICE)
+        self.critic = BasicCritic(input_dim, output_dim, self.critic_hidden)
+        self.critic = self.critic.to(Config.DEVICE)
         self.critic_init = copy.deepcopy(self.critic).to(Config.DEVICE)
 
-    def sample_model_seed(self, return_seed=False, aux_noise=1e-6, sweep=False):
+    def sample_model_seed(self, return_seed=False, aux_noise=0., sweep=False):
         if sweep:
             sample_z = self.noise_sampler.sweep_samples(aux_noise).to(Config.DEVICE)
         else:

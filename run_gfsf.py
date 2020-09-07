@@ -17,9 +17,6 @@ def product_dict(kwargs):
 
 def sweep(game, tag, model_fn, trials=50, manual=True, chain_len=4):
     hyperparams = {
-        'alpha_i': [1, 10, 100],
-        'alpha_f': [.1, 0.01],
-        'anneal': [500e3],
         'lr': [2e-4, 1e-4],
         'freq' : [10, 100],
         'grad_clip': [None, 5],
@@ -37,16 +34,13 @@ def sweep(game, tag, model_fn, trials=50, manual=True, chain_len=4):
         setting = {
             'game': game,
             'tb_tag': tag,
-            'alpha_i': 10,
-            'alpha_f': 0.1,
-            'anneal': 500e3,
-            'lr': 1e-4,
-            'freq': 10,
+            'lr': 1e-3,
+            'freq': 5,
             'grad_clip': None,
-            'hidden': 64,
-            'replay_size': int(1e3),
-            'replay_bs': 32,
-            'dist': 'softmax'
+            'hidden': 50,
+            'replay_size': int(1e5),
+            'replay_bs': 128,
+            'dist': 'uniform'
         }
         setting['chain_len'] = chain_len
         print ('Running Config: ')
@@ -89,7 +83,7 @@ def dqn_feature(**kwargs):
     config.hyper = True
     config.tag = config.tb_tag
     config.generate_log_handles()
-    config.particles = 10
+    config.particles = 24
     config.task_fn = lambda: Task(config.game,
             video=False,
             gif=False,
@@ -106,18 +100,22 @@ def dqn_feature(**kwargs):
                 hidden_units=(config.hidden, config.hidden)),
             hidden=config.hidden,
             dist=config.dist,
-            particles=config.particles)
-    
+            particles=config.particles,
+            critic_hidden=1)
+
+    config.prior_fn = lambda: DuelingNet(
+            config.action_dim,
+            FCBody(
+                config.state_dim,
+                hidden_units=(config.hidden, config.hidden)))
+
     config.replay_fn = lambda: Replay(
             memory_size=config.replay_size,
             batch_size=config.replay_bs)
-
-    # config.replay_fn = lambda: AsyncReplay(memory_size=config.replay_size, batch_size=config.replay_bs)
+    
+    config.prior_scale = 1.
     config.render = True  # Render environment at every train step
-    config.random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
-    config.max_random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)  # eps greedy params
-    # config.aux_noise_prob = LinearSchedule(0, 0, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
-    # config.log_random_action_prob = 0.05
+    config.random_action_prob = LinearSchedule(0, 0, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
     config.discount = 0.99  # horizon
     config.target_network_update_freq = config.freq  # hard update to target network
     config.exploration_steps = config.replay_bs  # random actions taken at the beginning to fill the replay buffer
@@ -125,32 +123,31 @@ def dqn_feature(**kwargs):
     config.sgd_update_frequency = 1  # how often to do learning
     config.gradient_clip = config.grad_clip  # max gradient norm
     config.eval_interval = int(5e7) 
-    config.max_steps = 2000 * (config.chain_len+9)
+    config.max_steps = 500 * (config.chain_len+9)
     config.async_actor = False
-    config.alpha_anneal = config.anneal  # how long to anneal SVGD alpha from init to final
-    config.alpha_init = config.alpha_i  # SVGD alpha strating value
-    config.alpha_final = config.alpha_f  # SVGD alpha end value
-    config.svgd_q = 'sample'
-    config.update = 'sgd'
-    config.max_rand = True
+    config.update = 'thompson'
+    config.use_pushforward = False
 
     if config.update == 'sgd':
-        run_steps(DQN_GFSF_Agent(config))
+        if config.prior_scale > 0.:
+            run_steps(DQN_GFSF_Prior_Agent(config))
+        else:
+            run_steps(DQN_GFSF_Agent(config))
     elif config.update == 'thompson':
-        run_steps(DQN_GFSF_Thompson_Agent(config))
-
+        run_steps(DQN_GFSF_Prior_Thompson_Agent(config))
+    else:
+        raise ValueError
 
 if __name__ == '__main__':
     mkdir('log')
     mkdir('tf_log')
     set_one_thread()
     random_seed()
-    # select_device(-1)
     select_device(0)
 
     tag = 'test_new'
     game = 'NChain-v3'
-    for i in range(4, 101, 2):
-        tag = 'gfsf-chain/checkout1_{}'.format(i)
+    for i in range(14, 50, 2):
+        tag = 'gfsf-prior-chain/checkout1_{}'.format(i)
         sweep(game, tag, dqn_feature, manual=True, trials=50, chain_len=i)
 

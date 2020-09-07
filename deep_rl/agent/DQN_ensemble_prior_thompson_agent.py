@@ -11,15 +11,17 @@ from ..component import *
 from ..utils import *
 import time
 from .BaseAgent import *
+from tqdm import tqdm
 
-
-class DQNActor(BaseActor):
+class DQNThompsonActor(BaseActor):
     def __init__(self, config):
         BaseActor.__init__(self, config)
         self.config = config
         self.start()
         self.sigterm = False
-        self.change_k = False
+        self.update = False
+        self.episode_steps = 0
+        self.update_steps = 0
 
     def _transition(self):
         if self._state is None:
@@ -38,7 +40,9 @@ class DQNActor(BaseActor):
             action = np.argmax(q_values)
         next_state, reward, done, info = self._task.step([action])
         if done:
-            self.change_k = True
+            self.update = True,
+            self.update_steps = self.episode_steps
+            self.episode_steps = 0
         if info[0]['terminate'] == True:
             self.sigterm = True
             self.close()
@@ -48,15 +52,16 @@ class DQNActor(BaseActor):
         entry = [self._state[0], action, reward[0], next_state[0], int(done[0]), info]
         self._total_steps += 1
         self._state = next_state
+        self.episode_steps += 1
         return entry
 
 
-class DQN_RP_Agent(BaseAgent):
+class DQN_RP_Thompson_Agent(BaseAgent):
     def __init__(self, config):
         BaseAgent.__init__(self, config)
         self.config = config
         config.lock = mp.Lock()
-        self.actor = DQNActor(config)
+        self.actor = DQNThompsonActor(config)
         
         self.network_ensemble = []
         self.prior_network_ensemble = []
@@ -102,10 +107,6 @@ class DQN_RP_Agent(BaseAgent):
             self.total_steps = config.max_steps
             self.close()
         
-        if self.actor.change_k:
-            self.head = np.random.choice(config.ensemble_len, 1)[0]
-            self.actor.change_k = False
-
         beta = config.prior_scale
         network = self.network_ensemble[self.head]
         prior_network = self.prior_network_ensemble[self.head]
@@ -127,36 +128,37 @@ class DQN_RP_Agent(BaseAgent):
         else:
             self.replay_ensemble[self.head].feed_batch(experiences)
 
-        if self.total_steps > self.config.exploration_steps:
-            experiences = self.replay_ensemble[self.head].sample()
-            states, actions, rewards, next_states, terminals = experiences
-            states = self.config.state_normalizer(states)
-            next_states = self.config.state_normalizer(next_states)
-            q_next = target_network(next_states).detach()  # [particles, batch, action]
-            prior_next = prior_network(next_states).detach()
-            q_next = q_next + beta * prior_next
-            if self.config.double_q:
-                q = network(next_states) + beta * prior_network(next_states).detach()
-                best_actions = torch.argmax(q, dim=-1)  # get best action  [batch]
-                q_next = q_next[self.batch_indices, best_actions]
-            else:
-                q_next = q_next.max(1)[0]
-            terminals = tensor(terminals)
-            rewards = tensor(rewards)
-            q_next = self.config.discount * q_next * (1 - terminals)
-            q_next.add_(rewards)
-            actions = tensor(actions).long()
-            q = network(states) + beta * prior_network(states).detach()
-            q = q[self.batch_indices, actions]
+        if self.total_steps > self.config.exploration_steps and self.actor.update:
+            for update in tqdm(range(self.actor.update_steps), desc='SGD updates'):
+                experiences = self.replay_ensemble[self.head].sample()
+                states, actions, rewards, next_states, terminals = experiences
+                states = self.config.state_normalizer(states)
+                next_states = self.config.state_normalizer(next_states)
+                q_next = target_network(next_states).detach()  # [particles, batch, action]
+                prior_next = prior_network(next_states).detach()
+                q_next = q_next + beta * prior_next
+                if self.config.double_q:
+                    q = network(next_states) + beta * prior_network(next_states).detach()
+                    best_actions = torch.argmax(q, dim=-1)  # get best action  [batch]
+                    q_next = q_next[self.batch_indices, best_actions]
+                else:
+                    q_next = q_next.max(1)[0]
+                terminals = tensor(terminals)
+                rewards = tensor(rewards)
+                q_next = self.config.discount * q_next * (1 - terminals)
+                q_next.add_(rewards)
+                actions = tensor(actions).long()
+                q = network(states) + beta * prior_network(states).detach()
+                q = q[self.batch_indices, actions]
 
-            loss = (q_next - q).pow(2).mul(0.5).mean()
-            self.optimizer_ensemble[self.head].zero_grad()
-            loss.backward()
-            if self.config.gradient_clip:
-                nn.utils.clip_grad_norm_(network.parameters(), self.config.gradient_clip)
-            with config.lock:
-                self.optimizer_ensemble[self.head].step()
+                loss = (q_next - q).pow(2).mul(0.5).mean()
+                self.optimizer_ensemble[self.head].zero_grad()
+                loss.backward()
+                if self.config.gradient_clip:
+                    nn.utils.clip_grad_norm_(network.parameters(), self.config.gradient_clip)
+                with config.lock:
+                    self.optimizer_ensemble[self.head].step()
 
-        if self.total_steps / self.config.sgd_update_frequency % \
-                self.config.target_network_update_freq == 0:
             target_network.load_state_dict(network.state_dict())
+            self.actor.update = False
+            self.head = np.random.choice(config.ensemble_len, 1)[0]

@@ -19,28 +19,34 @@ def dqn_feature(**kwargs):
 
     config.optimizer_fn = lambda params: torch.optim.Adam(params, 1e-3)
     config.network_fn = lambda: DuelingNet(
-            config.action_dim,
-            FCBody(
-                config.state_dim,
-                hidden_units=(256, 256)))
+        config.action_dim,
+        FCBody(
+            config.state_dim,
+            hidden_units=(256, 256)))
 
-    config.replay_fn = lambda: Replay(memory_size=int(1e5), batch_size=100)
+    config.replay_fn = lambda: Replay(
+        memory_size=int(1e5),
+        batch_size=128)
 
+    config.prior_scale = 3.
     config.random_action_prob = LinearSchedule(0.0, 0.0, 1e4)
     config.discount = 0.99
     config.target_network_update_freq = 4
     config.exploration_steps = 128
-    config.ensemble_len = 10
-    config.reselect_steps = 100
+    config.ensemble_len = 20
     config.replay_mask_prob = 0.5
     config.double_q = True
-    config.prior_scale = 3.
     config.sgd_update_frequency = 1
     config.gradient_clip = 5
     config.eval_interval = int(5e3)
     config.max_steps = 2000 * (config.chain_len+9)
     config.async_actor = False
-    run_steps(DQNRPAgent(config))
+    
+    update = 'thompson'
+    if update == 'sgd':
+        run_steps(DQN_RP_Agent(config))
+    elif update == 'thompson':
+        run_steps(DQN_RP_Thompson_Agent(config))
 
 
 if __name__ == '__main__':

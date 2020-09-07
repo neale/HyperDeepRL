@@ -37,16 +37,14 @@ def sweep(game, tag, model_fn, trials=50, manual=True, chain_len=4):
         setting = {
             'game': game,
             'tb_tag': tag,
-            'alpha_i': 10,
-            'alpha_f': 0.1,
             'anneal': 500e3,
             'lr': 1e-4,
             'freq': 5,
             'grad_clip': None,
             'hidden': 256,
-            'replay_size': int(1e3),
-            'replay_bs': 64,
-            'dist': 'normal'
+            'replay_size': int(1e5),
+            'replay_bs': 128,
+            'dist': 'uniform'
         }
         setting['chain_len'] = chain_len
         print ('Running Config: ')
@@ -89,7 +87,7 @@ def dqn_feature(**kwargs):
     config.hyper = True
     config.tag = config.tb_tag
     config.generate_log_handles()
-    config.particles = 64
+    config.particles = 5
     config.task_fn = lambda: Task(config.game,
             video=False,
             gif=False,
@@ -107,18 +105,16 @@ def dqn_feature(**kwargs):
                 hidden_units=(config.hidden, config.hidden)),
             hidden=config.hidden,
             dist=config.dist,
-            particles=config.particles)
+            particles=config.particles,
+            critic_hidden=1000)
     
     config.replay_fn = lambda: Replay(
             memory_size=config.replay_size,
             batch_size=config.replay_bs)
 
     # config.replay_fn = lambda: AsyncReplay(memory_size=config.replay_size, batch_size=config.replay_bs)
-    config.render = True  # Render environment at every train step
-    config.random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
-    config.max_random_action_prob = LinearSchedule(1e-1, 1e-7, 1e4)  # eps greedy params
-    # config.aux_noise_prob = LinearSchedule(0, 0, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
-    # config.log_random_action_prob = 0.05
+    config.render = False
+    config.random_action_prob = LinearSchedule(0, 0, 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
     config.discount = 0.99  # horizon
     config.target_network_update_freq = config.freq  # hard update to target network
     config.exploration_steps = config.replay_bs  # random actions taken at the beginning to fill the replay buffer
@@ -128,10 +124,7 @@ def dqn_feature(**kwargs):
     config.eval_interval = int(5e7) 
     config.max_steps = 2000 * (config.chain_len+9)
     config.async_actor = False
-    config.alpha_anneal = config.anneal  # how long to anneal SVGD alpha from init to final
-    config.alpha_init = config.alpha_i  # SVGD alpha strating value
-    config.alpha_final = config.alpha_f  # SVGD alpha end value
-    config.critic_training_iters=10
+    config.critic_training_iters=5
     config.svgd_q = 'sample'
     config.update = 'sgd'
     config.max_rand = True
@@ -152,7 +145,7 @@ if __name__ == '__main__':
 
     tag = 'test_new'
     game = 'NChain-v3'
-    for i in range(4, 101, 2):
+    for i in range(10, 51, 2):
         tag = 'minmax-1iter-chain/checkout1_{}'.format(i)
         sweep(game, tag, dqn_feature, manual=True, trials=50, chain_len=i)
 

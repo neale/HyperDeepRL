@@ -20,12 +20,12 @@ class NoiseSampler(object):
 
         elif self.dist_type == 'normal':
             loc = torch.zeros(self.z_dim)
-            scale = torch.ones(self.z_dim)
+            scale = torch.ones(self.z_dim) * 2
             self.base_dist = torch.distributions.Normal(loc, scale)
         
         elif self.dist_type == 'dirichlet':
             k_classes = self.z_dim
-            probs = torch.ones(k_classes) * 1e-6# /float(k_classes)
+            probs = torch.ones(self.z_dim) * .5
             self.base_dist = torch.distributions.Dirichlet(probs)
             high = torch.ones(self.z_dim) * 0
             low = torch.zeros(self.z_dim)
@@ -70,7 +70,7 @@ class NoiseSampler(object):
             sample = self.base_dist.sample()
             sample_aux = aux_dist.sample([self.particles])
             sample = sample.unsqueeze(0).repeat(self.particles, 1)
-            sample += sample_aux
+            sample += sample_auxQ
             sample = sample.clamp(min=0.0, max=1.0)
             # print (sample)
         else:

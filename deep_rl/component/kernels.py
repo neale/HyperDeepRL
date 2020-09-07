@@ -35,25 +35,34 @@ def batch_rbf(x, y, h_min=1e-3):
         y (tensor): A tensor of shape (Ny, B, D) containing Ny particles
         h_min(`float`): Minimum bandwidth.
     """
-    Nx, Bx, Dx = x.shape 
-    Ny, By, Dy = y.shape
-    assert Bx == By
+    if x.dim() == 3: # pushforward
+        Nx, Bx, Dx = x.shape 
+        Ny, By, Dy = y.shape
+    else:
+        Nx, Dx = x.shape
+        Ny, Dy = y.shape
+    assert Nx == Ny
     assert Dx == Dy
-
+    
     diff = x.unsqueeze(1) - y.unsqueeze(0) # Nx x Ny x B x D
-    dist_sq = torch.sum(diff**2, -1).mean(dim=-1) # Nx x Ny
-    values, _ = torch.topk(dist_sq.view(-1), k=dist_sq.nelement()//2+1)
-    median_sq = values[-1]
-    h = median_sq / np.log(Nx)
-    h = torch.max(h, torch.tensor([h_min]).cuda())
+    if x.dim() == 3:
+        dist_sq = torch.sum(diff**2, -1)
+        dist_sq = dist_sq.mean(dim=-1) # Nx x Ny
+    else:
+        dist_sq = torch.sum(diff**2, -1)
+    width, _ = torch.median(dist_sq.view(-1), dim=0)
+    width = width / np.log(len(dist_sq))
+    width = torch.max(width, torch.tensor([h_min]).cuda())
     # Nx x Ny
-    kappa = torch.exp(-dist_sq / h)
-    # Nx x Ny x B x D
-    kappa_grad = torch.einsum('ij,ijkl->ijkl', kappa, -2 * diff / h)
+    kappa = torch.exp(-dist_sq / width)
+    # Nx x Ny x ? x D
+    if diff.dim() == 4:
+        diff = diff.squeeze(-1)
+    kappa_grad = torch.einsum('ij,ijk->ijk', kappa, -2 * diff / width)
     return kappa, kappa_grad
 
 
-def score_func(x, h_min=1e-3):
+def score_func(x, h_min=1e-3, alpha=1e-5):
     N, D = x.shape
     z_x = torch.rand_like(x) * 1e-10
     z_x += x
@@ -65,7 +74,7 @@ def score_func(x, h_min=1e-3):
     h = torch.max(h, torch.tensor([h_min]).cuda())
     kappa = torch.exp(-dist_sq/h)
     I = torch.eye(N).cuda()
-    kappa_inv = torch.inverse(kappa + 1e-3 * I)
+    kappa_inv = torch.inverse(kappa + alpha * I)
     kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2*diff/h)
 
     return kappa_inv @ kappa_grad
