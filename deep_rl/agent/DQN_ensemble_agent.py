@@ -51,7 +51,7 @@ class DQNActor(BaseActor):
         return entry
 
 
-class DQNAgent(BaseAgent):
+class DQN_Ensemble_Agent(BaseAgent):
     def __init__(self, config):
         BaseAgent.__init__(self, config)
         self.config = config
@@ -59,15 +59,18 @@ class DQNAgent(BaseAgent):
         self.actor = DQNActor(config)
         
         self.network_ensemble = []
+        self.prior_network_ensemble = []
         self.target_network_ensemble = []
         self.optimizer_ensemble = []
         self.replay_ensemble = []
         for _ in range(config.ensemble_len):
             network = config.network_fn()
+            prior_network = config.network_fn()
             network.share_memory()
             target_network = config.network_fn()
             target_network.load_state_dict(network.state_dict())
             self.network_ensemble.append(network)
+            self.prior_network_ensemble.append(prior_network)
             self.target_network_ensemble.append(target_network)
             self.optimizer_ensemble.append(config.optimizer_fn(network.parameters())) 
             self.replay_ensemble.append(config.replay_fn())
@@ -99,12 +102,16 @@ class DQNAgent(BaseAgent):
             self.total_steps = config.max_steps
             self.close()
         
-        if self.actor.change_k == True:
+        if self.actor.change_k:
             self.head = np.random.choice(config.ensemble_len, 1)[0]
             self.actor.change_k = False
+
+        beta = config.prior_scale
         network = self.network_ensemble[self.head]
+        prior_network = self.prior_network_ensemble[self.head]
         target_network = self.target_network_ensemble[self.head]
         self.actor.set_network(network)
+        self.actor.set_prior_network(prior_network)
         transitions = self.actor.step()
         experiences = []
         for state, action, reward, next_state, done, info in transitions:
@@ -126,8 +133,10 @@ class DQNAgent(BaseAgent):
             states = self.config.state_normalizer(states)
             next_states = self.config.state_normalizer(next_states)
             q_next = target_network(next_states).detach()  # [particles, batch, action]
+            prior_next = prior_network(next_states).detach()
+            q_next = q_next + beta * prior_next
             if self.config.double_q:
-                q = network(next_states)  # choose random particle (Q function)  [batch, action]
+                q = network(next_states) + beta * prior_network(next_states).detach()
                 best_actions = torch.argmax(q, dim=-1)  # get best action  [batch]
                 q_next = q_next[self.batch_indices, best_actions]
             else:
@@ -137,13 +146,13 @@ class DQNAgent(BaseAgent):
             q_next = self.config.discount * q_next * (1 - terminals)
             q_next.add_(rewards)
             actions = tensor(actions).long()
-            q = network(states)
+            q = network(states) + beta * prior_network(states).detach()
             q = q[self.batch_indices, actions]
 
             loss = (q_next - q).pow(2).mul(0.5).mean()
             self.optimizer_ensemble[self.head].zero_grad()
             loss.backward()
-            if self.config.gradient_clip is not None:
+            if self.config.gradient_clip:
                 nn.utils.clip_grad_norm_(network.parameters(), self.config.gradient_clip)
             with config.lock:
                 self.optimizer_ensemble[self.head].step()

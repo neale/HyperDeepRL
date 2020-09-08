@@ -56,7 +56,7 @@ class DQNThompsonActor(BaseActor):
         return entry
 
 
-class DQN_RP_Thompson_Agent(BaseAgent):
+class DQN_Ensemble_Thompson_Agent(BaseAgent):
     def __init__(self, config):
         BaseAgent.__init__(self, config)
         self.config = config
