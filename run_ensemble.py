@@ -84,7 +84,6 @@ class Trainer(object):
         self._use_init_network = use_init_network
         self._chain_low = chain_low
         self._chain_high = chain_high
-        self._network = None
         self._target_network = None
         self.set_settings(settings)
 
@@ -97,12 +96,18 @@ class Trainer(object):
         print ('Running Manually Defined Single Trial, [1/1]')
         print ('Config: ')
         print (self.__dict__)
-        for i in range(self._chain_low, self._chain_high, 2):
-            if self.game == 'NChain-v3':
-                self.settings['chain_len'] = i
-            self.settings['max_steps'] = 500 * (i + 9)
-            self.settings['tb_tag'] = '-{}'.format(i)
+        if self.game == 'NChain-v3':
+            for i in range(self._chain_low, self._chain_high, 2):
+                if self.game == 'NChain-v3':
+                    self.settings['chain_len'] = i
+                self.settings['max_steps'] = 500 * (i + 9)
+                self.settings['tb_tag'] = 'ensemble-chain-{}'.format(i)
+                self._dqn_runner()
+        elif self.game == 'bsuite-cartpole_swingup/0':
+            self.settings['max_steps'] = 500e3
+            self.settings['tb_tag'] = 'ensemble-cartpole-{}'
             self._dqn_runner()
+
     
     def _set_init_networks(self, net, target_net):
         self._network = net
@@ -176,7 +181,9 @@ if __name__ == '__main__':
     random_seed()
     # select_device(-1)
     select_device(0)
-    game = 'NChain-v3'
-    trainer = Trainer(game, chain_low=50, chain_high=100, use_init_network=False)
+    #game = 'NChain-v3'
+    #trainer = Trainer(game, chain_low=50, chain_high=100, use_init_network=False)
+    game = 'bsuite-cartpole_swingup/0'
+    trainer = Trainer(game, use_init_network=False)
     trainer.run() 
 

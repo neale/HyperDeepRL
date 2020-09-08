@@ -39,9 +39,12 @@ class DQNActor(BaseActor):
         next_state, reward, done, info = self._task.step([action])
         if done:
             self.change_k = True
-        if info[0]['terminate'] == True:
-            self.sigterm = True
-            self.close()
+        
+        if 'terminate' in info[0]:
+            if info[0]['terminate'] == True:
+                self.sigterm = True
+                self.close()
+
         info[0]['q_var'] = q_var
         info[0]['q_mean'] = q_mean
         info[0]['p_var'] = 0.
@@ -133,10 +136,12 @@ class DQN_Ensemble_Agent(BaseAgent):
             states = self.config.state_normalizer(states)
             next_states = self.config.state_normalizer(next_states)
             q_next = target_network(next_states).detach()  # [particles, batch, action]
-            prior_next = prior_network(next_states).detach()
-            q_next = q_next + beta * prior_next
+            if beta > 0:
+                q_next += beta * prior_network(next_states).detach()
             if self.config.double_q:
-                q = network(next_states) + beta * prior_network(next_states).detach()
+                q = network(next_states) 
+                if beta > 0:
+                    q += beta * prior_network(next_states).detach()
                 best_actions = torch.argmax(q, dim=-1)  # get best action  [batch]
                 q_next = q_next[self.batch_indices, best_actions]
             else:
@@ -146,7 +151,9 @@ class DQN_Ensemble_Agent(BaseAgent):
             q_next = self.config.discount * q_next * (1 - terminals)
             q_next.add_(rewards)
             actions = tensor(actions).long()
-            q = network(states) + beta * prior_network(states).detach()
+            q = network(states)
+            if beta > 0:
+                q += beta * prior_network(states).detach()
             q = q[self.batch_indices, actions]
 
             loss = (q_next - q).pow(2).mul(0.5).mean()

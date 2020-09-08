@@ -31,6 +31,8 @@ class DuelingNet(nn.Module, BaseNet):
 
     def forward(self, x, to_numpy=False):
         phi = self.body(tensor(x))
+        if phi.dim() == 3 and phi.shape[1] == 1:
+            phi = phi.squeeze(1)
         value = self.fc_value(phi)
         advantange = self.fc_advantage(phi)
         q = value.expand_as(advantange) + (advantange - advantange.mean(1, keepdim=True).expand_as(advantange))

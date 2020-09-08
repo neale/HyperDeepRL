@@ -60,9 +60,10 @@ class DQNActor(BaseActor):
         info[0]['q_var'] = q_var.mean()
         info[0]['p_var'] = posterior_q.var(0).mean()
         
-        if info[0]['terminate'] == True:
-            self.sigterm = True
-            self.close()
+        if 'terminate' in info[0]:
+            if info[0]['terminate'] == True:
+                self.sigterm = True
+                self.close()
 
         entry = [
                 self._state[0],
@@ -171,12 +172,14 @@ class DQN_GFSF_Agent(BaseAgent):
             ## Get target q values
             q_next = self.target_network.forward_with_seed_or_theta(
                     next_states, z, theta_target).detach()  # [particles, batch, action]
-            q_next += beta * self.prior_network(next_states).detach()
+            if beta > 0:
+                q_next += beta * self.prior_network(next_states).detach()
             if self.config.double_q:
                 ## Double DQN
                 q = self.network.forward_with_seed_or_theta(
                     next_states, z, theta) # [particles, batch, action]
-                q += beta * self.prior_network(next_states).detach()
+                if beta > 0:
+                    q += beta * self.prior_network(next_states).detach()
                 best_actions = torch.argmax(q, dim=-1) # get best action  [particles, batch]
                 #[particles, batch, 1]
                 q_next = torch.stack(
@@ -192,7 +195,8 @@ class DQN_GFSF_Agent(BaseAgent):
 
             ## Get main Q values
             q_vals = self.network.forward_with_seed_or_theta(states, z, theta) # [particles, batch, action]
-            q_vals += beta * self.prior_network(states).detach()
+            if beta > 0
+                q_vals += beta * self.prior_network(states).detach()
             
             ## define q values with respect to all max actions (q), or the action taken (q_a)
             action_index = actions.unsqueeze(0).unsqueeze(-1).repeat(config.particles, 1, 1)

@@ -270,7 +270,7 @@ class DuelingHyperHead(nn.Module, BaseNet):
         if not isinstance(x, torch.cuda.FloatTensor):
             x = tensor(x)
         if x.shape[0] == 1 and x.shape[1] == 1: ## dm_env returns one too many dimensions
-            x = x[0]
+            x = x.squeeze(1)
         phi = self.body(x)
         phi = self.input_as_ensemble(phi, expand_dim=self.particles)
         return self.head(phi)

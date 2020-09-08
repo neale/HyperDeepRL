@@ -64,6 +64,11 @@ class DQN_GFSF_TActor(BaseActor):
         info[0]['q_var'] = q_var.mean()
         info[0]['p_var'] = posterior_q.var(0).mean()
 
+        if 'terminate' in info[0]:
+            if info[0]['terminate'] == True:
+                self.sigterm = True
+                self.close()
+
         entry = [self._state[0], action, actions_log, reward[0], next_state[0], int(done[0]), info]
         self._total_steps += 1
         self._state = next_state
@@ -125,6 +130,10 @@ class DQN_GFSF_TAgent(BaseAgent):
     def step(self):
         config = self.config
        
+        if self.actor.sigterm:
+            self.close()
+            self.total_steps = config.max_steps
+
         if not torch.equal(self.network.model_seed['value_z'], 
                            self.target_network.model_seed['value_z']):
             self.target_network.set_model_seed(self.network.model_seed)

@@ -61,9 +61,10 @@ class DQNMinmaxActor(BaseActor):
         info[0]['q_var'] = q_var.mean()
         info[0]['p_var'] = posterior_q.var(0).mean()
         
-        if info[0]['terminate'] == True:
-            self.sigterm = True
-            self.close()
+        if 'terminate' in info[0]:
+            if info[0]['terminate'] == True:
+                self.sigterm = True
+                self.close()
 
         entry = [
                 self._state[0],
