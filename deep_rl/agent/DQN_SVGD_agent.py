@@ -87,11 +87,18 @@ class DQN_SVGD_Agent(BaseAgent):
 
         self.replay = config.replay_fn()
         self.actor = DQNActor(config)
+        
+        if self.config.use_init_network:
+            self.network = config._init_network
+            self.network.share_memory()
+            self.target_network = config._init_target_network
+            print ('loaded init network')
+        else:
+            self.network = config.network_fn()
+            self.network.share_memory()
+            self.target_network = config.network_fn()
+            self.target_network.load_state_dict(self.network.state_dict())
 
-        self.network = config.network_fn()
-        self.network.share_memory()
-        self.target_network = config.network_fn()
-        self.target_network.load_state_dict(self.network.state_dict())
         self.prior_network = config.prior_fn()
         self.optimizer = config.optimizer_fn(self.network.parameters())
         self.alpha_schedule = BaselinesLinearSchedule(config.alpha_anneal, config.alpha_final, config.alpha_init)

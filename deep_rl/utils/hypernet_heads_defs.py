@@ -6,7 +6,7 @@ from collections import namedtuple
 # defaults = (100, 3, False, 64, 64, 'relu', None, 6) # python 3.7
 
 fields = ('d_output', 'd_input', 'd_hidden', 'kernel', 'bias', 's_dim', 'z_dim', 'act', 'act_out', 'n_gen')
-defaults = (64, 3, False, 64, 64, 'relu', None, 1) # python 3.6
+defaults = (64, 3, True, 64, 64, 'relu', None, 1) # python 3.6
 
 vanilla_net = namedtuple('vanilla_net', ' '.join(fields))
 vanilla_net.__new__.__defaults__ = defaults # python 3.6

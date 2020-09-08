@@ -17,7 +17,7 @@ import sys
 from tqdm import tqdm
 
 
-class DQNActor(BaseActor):
+class DQNThompsonActor(BaseActor):
     def __init__(self, config):
         BaseActor.__init__(self, config)
         self.config = config
@@ -85,7 +85,7 @@ class DQNActor(BaseActor):
         self.episode_steps += 1
         return entry
 
-class DQN_SVGD_Agent(BaseAgent):
+class DQN_SVGD_Thompson_Agent(BaseAgent):
     def __init__(self, config):
         BaseAgent.__init__(self, config)
         self.config = config
@@ -93,7 +93,7 @@ class DQN_SVGD_Agent(BaseAgent):
         config.lock = mp.Lock()
 
         self.replay = config.replay_fn()
-        self.actor = DQNActor(config)
+        self.actor = DQNThompsonActor(config)
 
         self.network = config.network_fn()
         self.network.share_memory()

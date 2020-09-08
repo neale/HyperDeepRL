@@ -8,6 +8,7 @@ from deep_rl import *
 import itertools
 import pprint
 import envs
+import copy
 
 def product_dict(kwargs):
     keys = kwargs.keys()
@@ -79,69 +80,127 @@ def sweep(game, tag, model_fn, trials=50, manual=True, chain_len=4):
         for (k, v) in setting.items():
             print ('{} : {}'.format(k, v))
         dqn_feature(**setting)
+
+class Trainer(object):
+    def __init__(
+            self,
+            game,
+            chain_low,
+            chain_high,
+            use_init_network=True,):
+
+        self.settings = {
+            'game': game,
+            'use_init_network': use_init_network,
+            'alpha_init': 10.,
+            'alpha_final': 0.,
+            'particles': 24,
+            'prior_scale': 0.,
+            'lr': 1e-4,
+            'target_network_update_freq': 5,
+            'gradient_clip' : None,
+            'hidden' : 64,
+            'batch_size': 128,
+            'replay_size': int(1e5),
+            'discount': 0.99,
+            'dist': 'uniform',
+            'use_pushforward': True,
+            'sgd_update_frequency': 1,}
+
+        self.game = game
+        self._use_init_network = use_init_network
+        self._chain_low = chain_low
+        self._chain_high = chain_high
+        self._network = None
+        self._target_network = None
+
+    def run(self):
+        print ('=========================================================')
+        print ('Running Manually Defined Single Trial, [1/1]')
+        print ('Config: ')
+        print (self.__dict__)
+        for i in range(self._chain_low, self._chain_high, 2):
+            self.settings['chain_len'] = i
+            self.settings['alpha_anneal'] = 500 * (i + 9)
+            self.settings['max_steps'] = 500 * (i + 9)
+            self.settings['tb_tag'] = '-{}'.format(i)
+            self._dqn_runner()
     
-def dqn_feature(**kwargs):
-    generate_tag(kwargs)
-    kwargs.setdefault('log_level', 0)
-    config = Config()
-    config.merge(kwargs)
-    config.hyper = True
-    config.tag = config.tb_tag
-    config.generate_log_handles()
-    config.particles = 24
-    config.task_fn = lambda: Task(
-        config.game,
-        video=False,
-        gif=False,
-        log_dir=config.tf_log_handle,
-        special_args=('NChain', config.chain_len))
-
-    config.eval_env = config.task_fn()
-
-    config.optimizer_fn = lambda params: torch.optim.Adam(params, config.lr)
+    def _set_init_networks(self, net, target_net):
+        self._network = net
+        self._target_network = target_net
     
-    config.network_fn = lambda: DuelingHyperHead(
-        config.action_dim,
-        FCBody(
-            config.state_dim,
-            hidden_units=(config.hidden, config.hidden)),
-        hidden=config.hidden,
-        dist=config.dist,
-        particles=config.particles,
-        critic_hidden=1)
-
-    config.prior_fn = lambda: DuelingNet(
-        config.action_dim,
-        FCBody(
-            config.state_dim,
-            hidden_units=(config.hidden, config.hidden)))
+    def _get_init_networks(self):
+        return copy.deepcopy(self._network), copy.deepcopy(self._target_network)
     
-    config.replay_fn = lambda: Replay(
-            memory_size=config.replay_size,
-            batch_size=config.replay_bs)
+    def _print_init_weight_norms(self):
+        for name, p in self._network.named_parameters():
+            print ('Param Group', name)
+            print ('mean: ', p.mean().item())
+            print ('var: ', p.var().item())
+            print ('norm: ', p.norm().item())
+            print ()
 
-    config.prior_scale = 0.
-    config.render = True  # Render environment at every train step
-    config.random_action_prob = LinearSchedule(0., 0., 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
-    config.discount = 0.99  # horizon
-    config.target_network_update_freq = config.freq  # hard update to target network
-    config.exploration_steps = config.replay_bs  # random actions taken at the beginning to fill the replay buffer
-    config.double_q = True  # use double q update
-    config.sgd_update_frequency = 1  # how often to do learning
-    config.gradient_clip = config.grad_clip  # max gradient norm
-    config.eval_interval = int(5e7) 
-    config.max_steps = 500 * (config.chain_len + 9)
-    config.async_actor = False
-    config.alpha_anneal = 500 * (config.chain_len + 9)  # how long to anneal SVGD alpha from init to final
-    config.alpha_init = config.alpha_i  # SVGD alpha strating value
-    config.alpha_final = config.alpha_f  # SVGD alpha end value
-    config.update = 'sgd'
-    config.use_pushforward = False
+    def _dqn_runner(self):
+        generate_tag(self.settings)
+        self.settings.setdefault('log_level', 0)
+        config = Config()
+        config.merge(self.settings)
+        config.tag = config.tb_tag
+        config.generate_log_handles()
+        config.task_fn = lambda: Task(
+            config.game,
+            video=False,
+            gif=False,
+            log_dir=config.tf_log_handle,
+            special_args=('NChain', config.chain_len))
 
-    if config.update == 'sgd':
-        run_steps(DQN_SVGD_Agent(config))
-    elif config.update == 'thompson':
-        run_steps(DQN_SVGD_Thompson_Agent(config))
+        config.eval_env = config.task_fn()
+        config.optimizer_fn = lambda params: torch.optim.Adam(params, config.lr)
+        config.network_fn = lambda: DuelingHyperHead(
+            config.action_dim,
+            FCBody(
+                config.state_dim,
+                hidden_units=(config.hidden, config.hidden)),
+            hidden=config.hidden,
+            dist=config.dist,
+            particles=config.particles,
+            critic_hidden=1)
+
+        config.prior_fn = lambda: DuelingNet(
+            config.action_dim,
+            FCBody(
+                config.state_dim,
+                hidden_units=(config.hidden, config.hidden)))
+        
+        config.replay_fn = lambda: Replay(
+                memory_size=config.replay_size,
+                batch_size=config.batch_size)
+        
+        config.render = True  # Render environment at every train step
+        config.random_action_prob = LinearSchedule(0., 0., 1e4)#1e-1, 1e-7, 1e4)  # eps greedy params
+        config.exploration_steps = config.batch_size  # random actions taken at the beginning to fill the replay buffer
+        config.double_q = True  # use double q update
+        config.eval_interval = int(5e7) 
+        config.async_actor = False
+        config.update = 'sgd'
+        
+        if self._use_init_network:
+            if self._network is None:
+                net = config.network_fn()
+                target_net = config.network_fn()
+                target_net.load_state_dict(net.state_dict())
+                self._set_init_networks(net, target_net)
+                self._print_init_weight_norms()
+            
+            network, target_network = self._get_init_networks()
+            config._init_network = network
+            config._init_target_network = target_network
+        
+        if config.update == 'sgd':
+            run_steps(DQN_SVGD_Agent(config))
+        elif config.update == 'thompson':
+            run_steps(DQN_SVGD_Thompson_Agent(config))
 
 
 if __name__ == '__main__':
@@ -151,11 +210,7 @@ if __name__ == '__main__':
     random_seed()
     # select_device(-1)
     select_device(0)
-
-    tag = 'test_new'
     game = 'NChain-v3'
-    for i in range(30, 50, 2):
-        tag = '-'.format(i)
-        #tag = 'test_svgd-chain-{}'.format(i)
-        sweep(game, tag, dqn_feature, manual=True, trials=50, chain_len=i)
+    trainer = Trainer(game, chain_low=50, chain_high=100, use_init_network=False)
+    trainer.run()
 

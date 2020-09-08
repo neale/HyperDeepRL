@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .network_utils import *
+
 def linear(x):
     return x
 
@@ -53,11 +55,16 @@ class LinearGenerator(nn.Module):
         self.d_input = config.d_input
         self.d_hidden = config.d_hidden
         
-        self.linear1 = nn.Linear(self.z, self.d_hidden, bias=True)
-        self.linear2 = nn.Linear(
+        init = kaiming_init
+        #init = ortho_init
+        #init = hyper_normal
+        #init = hyper_uniform
+        
+        self.linear1 = init(nn.Linear(self.z, self.d_hidden, bias=True))
+        self.linear2 = init(nn.Linear(
                 self.d_hidden,
                 self.d_output * self.d_input + self.d_output,
-                bias=True)
+                bias=True))
    
     def evaluate(self, x, theta):
         """ Evaluates a state batch with generated theta
@@ -101,8 +108,13 @@ class LinearGeneratorFx(nn.Module):
         self.d_input = config.d_input
         self.d_hidden = config.d_hidden
         
-        self.linear1 = nn.Linear(self.z, self.d_hidden, bias=self.bias)
-        self.linear2 = nn.Linear(self.d_hidden, self.d_output * self.d_input, bias=self.bias)
+        init = kaiming_init
+        #init = ortho_init
+        #init = hyper_normal
+        I#init = hyper_uniform
+        
+        self.linear1 = init(nn.Linear(self.z, self.d_hidden, bias=self.bias))
+        self.linear2 = init(nn.Linear(self.d_hidden, self.d_output * self.d_input + self.d_output, bias=self.bias))
     
     def forward(self, z, x=None, theta=None):
         """ HyperModel Core

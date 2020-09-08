@@ -14,13 +14,13 @@ class NoiseSampler(object):
 
     def set_base_sampler(self):
         if self.dist_type == 'uniform':
-            high = torch.ones(self.z_dim)
+            high = torch.ones(self.z_dim) * 1.
             low = high * 0.
             self.base_dist = torch.distributions.Uniform(low, high)
 
         elif self.dist_type == 'normal':
             loc = torch.zeros(self.z_dim)
-            scale = torch.ones(self.z_dim) * 2
+            scale = torch.ones(self.z_dim) * 1.
             self.base_dist = torch.distributions.Normal(loc, scale)
         
         elif self.dist_type == 'dirichlet':
