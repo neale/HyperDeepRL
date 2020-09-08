@@ -140,11 +140,11 @@ class DQN_Ensemble_Thompson_Agent(BaseAgent):
                 next_states = self.config.state_normalizer(next_states)
                 q_next = target_network(next_states).detach()  # [particles, batch, action]
                 prior_next = prior_network(next_states).detach()
-                if beta > 0.
+                if beta > 0:
                     q_next = q_next + beta * prior_next
                 if self.config.double_q:
                     q = network(next_states)
-                    if beta > 0.
+                    if beta > 0:
                         q += beta * prior_network(next_states).detach()
                     best_actions = torch.argmax(q, dim=-1)  # get best action  [batch]
                     q_next = q_next[self.batch_indices, best_actions]
@@ -156,7 +156,7 @@ class DQN_Ensemble_Thompson_Agent(BaseAgent):
                 q_next.add_(rewards)
                 actions = tensor(actions).long()
                 q = network(states)
-                if beta > 0.
+                if beta > 0:
                     q += beta * prior_network(states).detach()
                 q = q[self.batch_indices, actions]
 

@@ -79,16 +79,16 @@ class Trainer(object):
             'particles': 24,
             'prior_scale': 0.,
             'lr': 1e-4,
-            'target_network_update_freq': 100,#5,
+            'target_network_update_freq': 10,#5,
             'gradient_clip' : None,
             'hidden' : 256,
             'batch_size': 128,
             'replay_size': int(1e5),
             'discount': 0.99,
-            'dist': 'normal',
+            'dist': 'dirichlet',
             'use_pushforward': True,
             'sgd_update_frequency': 1,}
-
+        # freq 100 dirichlet 1e-3
         self.game = game
         self._use_init_network = use_init_network
         self._chain_low = chain_low

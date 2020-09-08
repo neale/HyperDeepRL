@@ -25,7 +25,7 @@ class NoiseSampler(object):
         
         elif self.dist_type == 'dirichlet':
             k_classes = self.z_dim
-            probs = torch.ones(self.z_dim) * .5
+            probs = torch.ones(self.z_dim) * 1e-3
             self.base_dist = torch.distributions.Dirichlet(probs)
             high = torch.ones(self.z_dim) * 0
             low = torch.zeros(self.z_dim)

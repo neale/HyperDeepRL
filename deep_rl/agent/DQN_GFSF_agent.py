@@ -195,7 +195,7 @@ class DQN_GFSF_Agent(BaseAgent):
 
             ## Get main Q values
             q_vals = self.network.forward_with_seed_or_theta(states, z, theta) # [particles, batch, action]
-            if beta > 0
+            if beta > 0:
                 q_vals += beta * self.prior_network(states).detach()
             
             ## define q values with respect to all max actions (q), or the action taken (q_a)
